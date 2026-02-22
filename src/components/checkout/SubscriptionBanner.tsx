@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import CheckoutModal from './CheckoutModal'
 
 interface Props {
   status: string | null
@@ -8,15 +9,8 @@ interface Props {
 }
 
 export default function SubscriptionBanner({ status, trialEndsAt }: Props) {
+  const [modalOpen, setModalOpen] = useState(false)
   const [loading, setLoading] = useState(false)
-
-  async function startCheckout() {
-    setLoading(true)
-    const res = await fetch('/api/stripe/checkout', { method: 'POST' })
-    const data = await res.json()
-    if (data.url) window.location.href = data.url
-    setLoading(false)
-  }
 
   async function openPortal() {
     setLoading(true)
@@ -51,7 +45,7 @@ export default function SubscriptionBanner({ status, trialEndsAt }: Props) {
           className="text-xs px-3 py-2 rounded-lg font-medium"
           style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--text)' }}
         >
-          Beheer
+          {loading ? '...' : 'Beheer'}
         </button>
       </div>
     )
@@ -76,32 +70,38 @@ export default function SubscriptionBanner({ status, trialEndsAt }: Props) {
           className="text-xs px-3 py-2 rounded-lg font-medium text-white"
           style={{ backgroundColor: '#EF4444' }}
         >
-          Bijwerken
+          {loading ? '...' : 'Bijwerken'}
         </button>
       </div>
     )
   }
 
-  // Free / geen abonnement
+  // Free / geen abonnement — modal
   return (
-    <div className="rounded-2xl px-5 py-4 flex items-center justify-between"
-      style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
-      <div>
-        <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
-          Fynn Pro — €12,99/maand
-        </p>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
-          14 dagen gratis proberen. Geen creditcard nodig.
-        </p>
+    <>
+      <div className="rounded-2xl px-5 py-4 flex items-center justify-between"
+        style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div>
+          <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+            Fynn Pro — €12,99/maand
+          </p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+            14 dagen gratis proberen. Geen creditcard nodig.
+          </p>
+        </div>
+        <button
+          onClick={() => setModalOpen(true)}
+          className="text-xs px-4 py-2 rounded-lg font-medium text-white"
+          style={{ backgroundColor: 'var(--brand)' }}
+        >
+          Start gratis →
+        </button>
       </div>
-      <button
-        onClick={startCheckout}
-        disabled={loading}
-        className="text-xs px-4 py-2 rounded-lg font-medium text-white disabled:opacity-50"
-        style={{ backgroundColor: 'var(--brand)' }}
-      >
-        {loading ? '...' : 'Start gratis →'}
-      </button>
-    </div>
+
+      <CheckoutModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+      />
+    </>
   )
 }

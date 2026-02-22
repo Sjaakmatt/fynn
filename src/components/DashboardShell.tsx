@@ -4,12 +4,12 @@ import { TabProvider, TabBar, TabPanel } from './TabNav'
 import ThemeToggle from './ThemeToggle'
 import ChatCoach from './ChatCoach'
 import UitgaveCheck from './UitgaveCheck'
-import SubscriptionManager from './SubscriptionManager'
+import SubscriptionManager from './checkout/SubscriptionManager'
 import GenerateBriefingButton from './GenerateBriefingButton'
 import BudgetPlanner from './BudgetPlanner'
 import HealthScore from './HealthScore'
 import FinancialRadar from './FinancialRadar'
-import SubscriptionBanner from './SubscriptionBanner'
+import SubscriptionBanner from './checkout/SubscriptionBanner'
 
 const CATEGORY_ICONS: Record<string, string> = {
   'wonen': '🏠', 'boodschappen': '🛒', 'eten & drinken': '🍽️',
