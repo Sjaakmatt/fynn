@@ -1,0 +1,107 @@
+'use client'
+
+import { useState } from 'react'
+
+interface Props {
+  status: string | null
+  trialEndsAt: string | null
+}
+
+export default function SubscriptionBanner({ status, trialEndsAt }: Props) {
+  const [loading, setLoading] = useState(false)
+
+  async function startCheckout() {
+    setLoading(true)
+    const res = await fetch('/api/stripe/checkout', { method: 'POST' })
+    const data = await res.json()
+    if (data.url) window.location.href = data.url
+    setLoading(false)
+  }
+
+  async function openPortal() {
+    setLoading(true)
+    const res = await fetch('/api/stripe/portal', { method: 'POST' })
+    const data = await res.json()
+    if (data.url) window.location.href = data.url
+    setLoading(false)
+  }
+
+  // Actief betaald abonnement — geen banner
+  if (status === 'active') return null
+
+  // Trial actief
+  if (status === 'trialing' && trialEndsAt) {
+    const daysLeft = Math.ceil(
+      (new Date(trialEndsAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+    )
+    return (
+      <div className="rounded-2xl px-5 py-4 flex items-center justify-between"
+        style={{ backgroundColor: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)' }}>
+        <div>
+          <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+            ✨ Gratis trial — nog {daysLeft} dag{daysLeft !== 1 ? 'en' : ''}
+          </p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+            Daarna €12,99/maand. Altijd opzegbaar.
+          </p>
+        </div>
+        <button
+          onClick={openPortal}
+          disabled={loading}
+          className="text-xs px-3 py-2 rounded-lg font-medium"
+          style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--text)' }}
+        >
+          Beheer
+        </button>
+      </div>
+    )
+  }
+
+  // Past due
+  if (status === 'past_due') {
+    return (
+      <div className="rounded-2xl px-5 py-4 flex items-center justify-between"
+        style={{ backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+        <div>
+          <p className="text-sm font-medium" style={{ color: '#EF4444' }}>
+            ⚠️ Betaling mislukt
+          </p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+            Werk je betaalgegevens bij om toegang te behouden.
+          </p>
+        </div>
+        <button
+          onClick={openPortal}
+          disabled={loading}
+          className="text-xs px-3 py-2 rounded-lg font-medium text-white"
+          style={{ backgroundColor: '#EF4444' }}
+        >
+          Bijwerken
+        </button>
+      </div>
+    )
+  }
+
+  // Free / geen abonnement
+  return (
+    <div className="rounded-2xl px-5 py-4 flex items-center justify-between"
+      style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <div>
+        <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+          Fynn Pro — €12,99/maand
+        </p>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+          14 dagen gratis proberen. Geen creditcard nodig.
+        </p>
+      </div>
+      <button
+        onClick={startCheckout}
+        disabled={loading}
+        className="text-xs px-4 py-2 rounded-lg font-medium text-white disabled:opacity-50"
+        style={{ backgroundColor: 'var(--brand)' }}
+      >
+        {loading ? '...' : 'Start gratis →'}
+      </button>
+    </div>
+  )
+}
