@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import DashboardShell from '@/components/DashboardShell'
+import ConnectBank from '@/components/ConnectBank'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -9,7 +10,7 @@ export default async function DashboardPage() {
 
   const { data: accounts } = await supabase
     .from('bank_accounts')
-    .select('*')
+    .select('id, account_name, iban, balance')
     .eq('user_id', user.id)
 
   const { data: transactions } = await supabase
@@ -57,6 +58,9 @@ export default async function DashboardPage() {
     .filter(([cat]) => cat !== 'sparen')
     .sort((a, b) => b[1].total - a[1].total)
 
+  const isPro = profile?.subscription_status === 'active' || 
+              profile?.subscription_status === 'trialing'
+
   return (
     <DashboardShell
       user={{ id: user.id, email: user.email }}
@@ -67,6 +71,7 @@ export default async function DashboardPage() {
       transactionCount={transactions?.length ?? 0}
       subscriptionStatus={profile?.subscription_status ?? null}
       trialEndsAt={profile?.trial_ends_at ?? null}
+      isPro={isPro}
     />
   )
 }

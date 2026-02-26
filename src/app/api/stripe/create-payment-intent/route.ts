@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
       items: [{ price: process.env.STRIPE_PRICE_ID! }],
       payment_behavior: 'default_incomplete',
       payment_settings: {
-        payment_method_types: ['card'],
+        payment_method_types: ['card', 'sepa_debit'],
         save_default_payment_method: 'on_subscription',
       },
       trial_period_days: 14,

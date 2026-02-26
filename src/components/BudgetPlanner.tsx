@@ -35,7 +35,23 @@ export default function BudgetPlanner() {
   const [newBudget, setNewBudget] = useState('')
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => { loadBudget() }, [])
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  useEffect(() => {
+    // Check bij mount of refresh nodig is
+    if (sessionStorage.getItem('budgetNeedsRefresh') === 'true') {
+      sessionStorage.removeItem('budgetNeedsRefresh')
+      loadBudget()
+      return
+    }
+    loadBudget()
+  }, [refreshKey])
+
+  useEffect(() => {
+    const handler = () => setRefreshKey(k => k + 1)
+    window.addEventListener('transactionUpdated', handler)
+    return () => window.removeEventListener('transactionUpdated', handler)
+  }, [])
 
   async function loadBudget() {
     setLoading(true)

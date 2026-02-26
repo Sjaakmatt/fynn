@@ -70,7 +70,26 @@ export async function POST(request: NextRequest) {
           tink_account_id: account.id,
           iban: account.identifiers?.iban?.iban ?? null,
           currency: account.currencyCode ?? 'EUR',
-        }, { onConflict: 'user_id, iban' })
+          account_type: account.type ?? null,
+          balance: account.balances?.booked?.amount?.value?.unscaledValue != null
+            ? Number(account.balances.booked.amount.value.unscaledValue) /
+              Math.pow(10, parseInt(account.balances.booked.amount.value.scale ?? '0'))
+            : null,
+        }, { onConflict: 'user_id, iban', ignoreDuplicates: false })
+        const balanceRaw = account.balances?.booked?.amount?.value
+          console.log('Balance raw:', JSON.stringify(balanceRaw))
+          const calculatedBalance = balanceRaw?.unscaledValue != null
+            ? Number(balanceRaw.unscaledValue) / Math.pow(10, parseInt(balanceRaw.scale ?? '0'))
+            : null
+          console.log('Balance calculated:', calculatedBalance)
+
+          // Check wat Supabase teruggeeft
+          const { error: updateError } = await supabase
+            .from('bank_accounts')
+            .update({ balance: calculatedBalance })
+            .eq('user_id', user.id)
+            .eq('iban', account.identifiers?.iban?.iban ?? '')
+          console.log('Update error:', updateError)
       }
     }
 
@@ -90,15 +109,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Trigger categorisatie  ← HIER, niet in catch
-    await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/ai/categorize`, {
+    // Trigger categorisatie
+    await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/categorize`, {
       method: 'POST',
-      headers: { 
-        'Cookie': request.headers.get('cookie') ?? '' 
+      headers: {
+        'Cookie': request.headers.get('cookie') ?? ''
       }
     })
 
-    return NextResponse.json({ success: true })  // ← dan pas return
+    return NextResponse.json({ success: true })
 
   } catch (error) {
     console.error('Callback error:', error)

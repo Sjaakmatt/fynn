@@ -21,6 +21,7 @@ export default function CheckoutModal({ isOpen, onClose }: Props) {
   const [intentType, setIntentType] = useState<'payment_intent' | 'setup_intent'>('setup_intent')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [subscriptionId, setSubscriptionId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isOpen) return
@@ -35,6 +36,7 @@ export default function CheckoutModal({ isOpen, onClose }: Props) {
         } else {
           setClientSecret(data.clientSecret)
           setIntentType(data.intentType)
+          setSubscriptionId(data.subscriptionId) // ← toevoegen
         }
         setLoading(false)
       })
@@ -125,6 +127,7 @@ export default function CheckoutModal({ isOpen, onClose }: Props) {
           >
             <PaymentForm
               intentType={intentType}
+              subscriptionId={subscriptionId}  // ← toevoegen
               onSuccess={onClose}
             />
           </Elements>
@@ -141,9 +144,11 @@ export default function CheckoutModal({ isOpen, onClose }: Props) {
 
 function PaymentForm({
   intentType,
+  subscriptionId,
   onSuccess,
 }: {
   intentType: 'payment_intent' | 'setup_intent'
+  subscriptionId: string | null
   onSuccess: () => void
 }) {
   const stripe = useStripe()
@@ -177,11 +182,19 @@ function PaymentForm({
       })
     }
 
+    // Na result check, vervang setSuccess(true) door:
     if (result.error) {
       setError(result.error.message ?? 'Betaling mislukt. Probeer opnieuw.')
       setSubmitting(false)
       return
     }
+
+    // Direct status updaten — niet wachten op webhook
+    await fetch('/api/stripe/confirm-subscription', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscriptionId: subscriptionId }),
+    })
 
     setSuccess(true)
     setSubmitting(false)

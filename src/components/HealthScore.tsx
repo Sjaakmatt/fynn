@@ -25,7 +25,7 @@ export default function HealthScore() {
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
-    fetch('/api/ai/score')
+    fetch('/api/score')
       .then(r => r.json())
       .then(d => {
         if (d.score !== null) setData(d)

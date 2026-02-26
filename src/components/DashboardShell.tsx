@@ -10,6 +10,11 @@ import BudgetPlanner from './BudgetPlanner'
 import HealthScore from './HealthScore'
 import FinancialRadar from './FinancialRadar'
 import SubscriptionBanner from './checkout/SubscriptionBanner'
+import ConnectBank from '@/components/ConnectBank'
+import CategoryBreakdown from './CategoryBreakdown'
+import OnboardingFlow from './OnboardingFlow'
+import AFMDisclaimer from './AFMDisclaimer'
+import VasteLastenKalender from './VasteLastenKalender'
 
 const CATEGORY_ICONS: Record<string, string> = {
   'wonen': '🏠', 'boodschappen': '🛒', 'eten & drinken': '🍽️',
@@ -20,7 +25,7 @@ const CATEGORY_ICONS: Record<string, string> = {
 
 interface Props {
   user: { id: string; email?: string }
-  accounts: { id: string; account_name: string; iban: string }[]
+  accounts: { id: string; account_name: string; iban: string; balance?: number | null }[]
   stats: {
     totalUitgaven: number
     totalInkomen: number
@@ -31,18 +36,20 @@ interface Props {
   sortedCategories: [string, { total: number; count: number }][]
   briefing: { content: string; created_at: string } | null
   transactionCount: number
-  subscriptionStatus: string | null   // ← toevoegen
-  trialEndsAt: string | null          // ← toevoegen
+  subscriptionStatus: string | null
+  trialEndsAt: string | null
+  isPro: boolean
 }
 
 export default function DashboardShell({
-  user, accounts, stats, sortedCategories, briefing, transactionCount, subscriptionStatus, trialEndsAt
+  user, accounts, stats, sortedCategories, briefing,
+  transactionCount, subscriptionStatus, trialEndsAt, isPro
 }: Props) {
   const firstName = user.email?.split('@')[0] ?? 'daar'
   const hasData = accounts.length > 0 && transactionCount > 0
 
   return (
-    <TabProvider>
+    <TabProvider isPro={isPro}>
       <div className="min-h-screen transition-colors" style={{ backgroundColor: 'var(--bg)' }}>
 
         {/* Nav */}
@@ -60,7 +67,6 @@ export default function DashboardShell({
               <ThemeToggle />
             </div>
           </div>
-          {/* Tab bar */}
           {hasData && (
             <div className="max-w-2xl mx-auto px-4 pb-3">
               <TabBar />
@@ -70,33 +76,25 @@ export default function DashboardShell({
 
         <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
 
-          {/* Geen data state */}
+          {/* Onboarding */}
           {!hasData && (
-            <div className="rounded-2xl p-10 text-center"
-              style={{ backgroundColor: 'var(--surface)' }}>
-              <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center text-3xl"
-                style={{ backgroundColor: 'var(--brand)' }}>
-                🏦
-              </div>
-              <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--text)' }}>
-                Welkom bij Fynn
-              </h2>
-              <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>
-                Koppel je bankrekening. Fynn analyseert alles automatisch.
-              </p>
-              <a href="/api/tink/link"
-                className="inline-block px-6 py-3 rounded-xl text-white text-sm font-medium"
-                style={{ backgroundColor: 'var(--brand)' }}>
-                Bankrekening koppelen
-              </a>
-            </div>
+            <OnboardingFlow userId={user.id} isPro={isPro} />
           )}
 
-          {/* OVERZICHT TAB */}
-          <SubscriptionBanner 
-            status={subscriptionStatus} 
-            trialEndsAt={trialEndsAt} 
+          {/* Reconnect + Banner — altijd zichtbaar */}
+          {hasData && (
+            <ConnectBank
+              userId={user.id}
+              label="Rekening opnieuw koppelen"
+              compact={true}
+            />
+          )}
+          <SubscriptionBanner
+            status={subscriptionStatus}
+            trialEndsAt={trialEndsAt}
           />
+
+          {/* OVERZICHT TAB */}
           {hasData && (
             <TabPanel id="overzicht">
               {/* Hero */}
@@ -107,7 +105,13 @@ export default function DashboardShell({
                   <p className="text-5xl font-bold">€{stats.totalUitgaven.toFixed(0)}</p>
                 </div>
                 <p className="text-sm opacity-70 mb-6">uitgegeven deze periode</p>
-                <div className="grid grid-cols-3 gap-4 pt-4 border-t border-white/10">
+                <div className="grid grid-cols-4 gap-4 pt-4 border-t border-white/10">
+                  <div>
+                    <p className="text-xs opacity-60 mb-1">Saldo</p>
+                    <p className="text-lg font-semibold">
+                      {accounts[0]?.balance != null ? `€${Number(accounts[0].balance).toFixed(0)}` : '—'}
+                    </p>
+                  </div>
                   <div>
                     <p className="text-xs opacity-60 mb-1">Inkomen</p>
                     <p className="text-lg font-semibold">€{stats.totalInkomen.toFixed(0)}</p>
@@ -122,46 +126,67 @@ export default function DashboardShell({
                   </div>
                 </div>
               </div>
+
               <FinancialRadar />
               <HealthScore />
-              {/* Briefing */}
-              <div className="rounded-2xl overflow-hidden"
-                style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
-                <div className="px-5 py-4 flex items-center justify-between border-b"
-                  style={{ borderColor: 'var(--border)' }}>
-                  <div>
-                    <h2 className="font-semibold text-sm" style={{ color: 'var(--text)' }}>
-                      Jouw wekelijkse briefing
-                    </h2>
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
-                      Persoonlijk overzicht van Fynn
-                    </p>
-                  </div>
-                  <GenerateBriefingButton />
-                </div>
-                <div className="px-5 py-4">
-                  {briefing ? (
-                    <>
-                      <div className="space-y-3">
-                        {briefing.content.split('\n\n').filter(Boolean).map((paragraph, i) => (
-                          <p key={i} className="text-sm leading-relaxed" style={{ color: 'var(--text)' }}>
-                            {paragraph.trim()}
-                          </p>
-                        ))}
-                      </div>
-                      <p className="text-xs mt-3" style={{ color: 'var(--muted)' }}>
-                        {new Date(briefing.created_at).toLocaleDateString('nl-NL', {
-                          weekday: 'long', day: 'numeric', month: 'long'
-                        })}
+
+              {/* Briefing — alleen Pro */}
+              {isPro ? (
+                <div className="rounded-2xl overflow-hidden"
+                  style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
+                  <div className="px-5 py-4 flex items-center justify-between border-b"
+                    style={{ borderColor: 'var(--border)' }}>
+                    <div>
+                      <h2 className="font-semibold text-sm" style={{ color: 'var(--text)' }}>
+                        Jouw wekelijkse briefing
+                      </h2>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+                        Persoonlijk overzicht van Fynn
                       </p>
-                    </>
-                  ) : (
-                    <p className="text-sm" style={{ color: 'var(--muted)' }}>
-                      Klik op "Genereer" voor je eerste persoonlijke briefing.
-                    </p>
-                  )}
+                    </div>
+                    <GenerateBriefingButton />
+                  </div>
+                  <div className="px-5 py-4">
+                    {briefing ? (
+                      <>
+                        <div className="space-y-3">
+                          {briefing.content.split('\n\n').filter(Boolean).map((paragraph, i) => (
+                            <p key={i} className="text-sm leading-relaxed" style={{ color: 'var(--text)' }}>
+                              {paragraph.trim()}
+                            </p>
+                          ))}
+                        </div>
+                        <p className="text-xs mt-3" style={{ color: 'var(--muted)' }}>
+                          {new Date(briefing.created_at).toLocaleDateString('nl-NL', {
+                            weekday: 'long', day: 'numeric', month: 'long'
+                          })}
+                        </p>
+                        <AFMDisclaimer />
+                      </>
+                    ) : (
+                      <p className="text-sm" style={{ color: 'var(--muted)' }}>
+                        Klik op "Genereer" voor je eerste persoonlijke briefing.
+                      </p>
+                    )}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* Upgrade nudge voor free users */
+                <div className="rounded-2xl p-5 text-center"
+                  style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
+                  <p className="text-2xl mb-2">📬</p>
+                  <p className="text-sm font-medium mb-1" style={{ color: 'var(--text)' }}>
+                    Wekelijkse persoonlijke briefing
+                  </p>
+                  <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
+                    Elke maandag een helder overzicht van jouw financiën — alleen voor Pro.
+                  </p>
+                  <button className="text-xs px-4 py-2 rounded-xl text-white"
+                    style={{ backgroundColor: 'var(--brand)' }}>
+                    Upgrade naar Pro
+                  </button>
+                </div>
+              )}
 
               {/* Rekeningen */}
               <div className="mt-4 rounded-2xl overflow-hidden"
@@ -182,7 +207,14 @@ export default function DashboardShell({
                         <p className="text-xs" style={{ color: 'var(--muted)' }}>{account.iban}</p>
                       </div>
                     </div>
-                    <div className="w-2 h-2 rounded-full bg-green-400" />
+                    <div className="flex items-center gap-2">
+                      {account.balance != null && (
+                        <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+                          €{Number(account.balance).toFixed(2)}
+                        </p>
+                      )}
+                      <div className="w-2 h-2 rounded-full bg-green-400" />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -192,70 +224,59 @@ export default function DashboardShell({
           {/* ANALYSE TAB */}
           {hasData && (
             <TabPanel id="analyse">
-              {/* Categorieën */}
-              <div className="rounded-2xl overflow-hidden mb-4"
-                style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
-                <div className="px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
-                  <h2 className="font-semibold text-sm" style={{ color: 'var(--text)' }}>
-                    Uitgaven per categorie
-                  </h2>
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
-                    {transactionCount} transacties geanalyseerd
+              <CategoryBreakdown
+                sortedCategories={sortedCategories}
+                totalUitgaven={stats.totalUitgaven}
+              />
+              {/* Abonnementenbeheer — alleen Pro */}
+              {isPro ? (
+                <SubscriptionManager />
+              ) : (
+                <div className="rounded-2xl p-5 text-center mt-4"
+                  style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
+                  <p className="text-2xl mb-2">📱</p>
+                  <p className="text-sm font-medium mb-1" style={{ color: 'var(--text)' }}>
+                    Abonnementenbeheer
                   </p>
+                  <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
+                    Zie precies welke abonnementen je hebt en wat ze kosten — alleen voor Pro.
+                  </p>
+                  <button className="text-xs px-4 py-2 rounded-xl text-white"
+                    style={{ backgroundColor: 'var(--brand)' }}>
+                    Upgrade naar Pro
+                  </button>
                 </div>
-                <div>
-                  {sortedCategories.map(([cat, data]) => {
-                    const pct = stats.totalUitgaven > 0 ? (data.total / stats.totalUitgaven) * 100 : 0
-                    return (
-                      <div key={cat} className="px-5 py-4 border-b last:border-0"
-                        style={{ borderColor: 'var(--border)' }}>
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-3">
-                            <span className="text-lg">{CATEGORY_ICONS[cat] ?? '📦'}</span>
-                            <div>
-                              <p className="text-sm font-medium capitalize" style={{ color: 'var(--text)' }}>
-                                {cat}
-                              </p>
-                              <p className="text-xs" style={{ color: 'var(--muted)' }}>
-                                {data.count} transacties
-                              </p>
-                            </div>
-                          </div>
-                          <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
-                            €{data.total.toFixed(0)}
-                          </p>
-                        </div>
-                        <div className="h-1 rounded-full overflow-hidden ml-8"
-                          style={{ backgroundColor: 'var(--tab-bg)' }}>
-                          <div className="h-full rounded-full"
-                            style={{ width: `${pct}%`, backgroundColor: 'var(--brand)' }} />
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-              <SubscriptionManager />
+              )}
             </TabPanel>
           )}
 
-          {/* COACH TAB */}
-          {hasData && (
+          {/* COACH TAB — alleen Pro */}
+          {hasData && isPro && (
             <TabPanel id="coach">
               <ChatCoach />
+              <AFMDisclaimer />
             </TabPanel>
           )}
 
           {hasData && (
+            <TabPanel id="kalender">
+              <VasteLastenKalender />
+            </TabPanel>
+          )}
+
+          {/* BUDGET TAB — alleen Pro */}
+          {hasData && isPro && (
             <TabPanel id="budget">
               <BudgetPlanner />
+              <AFMDisclaimer />
             </TabPanel>
           )}
 
-          {/* CHECK TAB */}
-          {hasData && (
+          {/* CHECK TAB — alleen Pro */}
+          {hasData && isPro && (
             <TabPanel id="check">
               <UitgaveCheck />
+              <AFMDisclaimer />
             </TabPanel>
           )}
 

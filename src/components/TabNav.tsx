@@ -2,53 +2,74 @@
 
 import { useState, createContext, useContext } from 'react'
 
-type Tab = 'overzicht' | 'analyse' | 'coach' | 'check' | 'budget'
+type Tab = 'overzicht' | 'analyse' | 'coach' | 'check' | 'budget' | 'kalender'
 
-const TabContext = createContext<{ active: Tab; setActive: (t: Tab) => void }>({
+const TabContext = createContext<{ 
+  active: Tab
+  setActive: (t: Tab) => void
+  isPro: boolean
+}>({
   active: 'overzicht',
   setActive: () => {},
+  isPro: false,
 })
 
 export function useTab() {
   return useContext(TabContext)
 }
 
-const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'overzicht', label: 'Overzicht', icon: '◎' },
-  { id: 'analyse', label: 'Analyse', icon: '↗' },
-  { id: 'coach', label: 'Coach', icon: '✦' },
-  { id: 'budget', label: 'Budget', icon: '◈' },
-  { id: 'check', label: 'Check', icon: '✓' },
+const TABS: { id: Tab; label: string; icon: string; proOnly: boolean }[] = [
+  { id: 'overzicht', label: 'Overzicht', icon: '◎', proOnly: false },
+  { id: 'analyse',  label: 'Analyse',  icon: '↗', proOnly: false },
+  { id: 'coach',    label: 'Coach',    icon: '✦', proOnly: true  },
+  { id: 'budget',   label: 'Budget',   icon: '◈', proOnly: true  },
+  { id: 'kalender', label: 'Kalender', icon: '▦', proOnly: false },
+  { id: 'check',    label: 'Check',    icon: '✓', proOnly: true  },
 ]
 
-export function TabProvider({ children }: { children: React.ReactNode }) {
+export function TabProvider({ children, isPro }: { children: React.ReactNode; isPro: boolean }) {
   const [active, setActive] = useState<Tab>('overzicht')
   return (
-    <TabContext.Provider value={{ active, setActive }}>
+    <TabContext.Provider value={{ active, setActive, isPro }}>
       {children}
     </TabContext.Provider>
   )
 }
 
 export function TabBar() {
-  const { active, setActive } = useTab()
+  const { active, setActive, isPro } = useTab()
+
   return (
     <div className="flex gap-1 p-1 rounded-xl" style={{ backgroundColor: 'var(--tab-bg)' }}>
-      {TABS.map(tab => (
-        <button
-          key={tab.id}
-          onClick={() => setActive(tab.id)}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-medium transition-all"
-          style={{
-            backgroundColor: active === tab.id ? 'var(--tab-active)' : 'transparent',
-            color: active === tab.id ? 'var(--tab-active-text)' : 'var(--muted)',
-            boxShadow: active === tab.id ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-          }}
-        >
-          <span className="text-xs">{tab.icon}</span>
-          <span className="hidden sm:block">{tab.label}</span>
-        </button>
-      ))}
+      {TABS.map(tab => {
+        const locked = tab.proOnly && !isPro
+        const isActive = active === tab.id
+
+        return (
+          <button
+            key={tab.id}
+            onClick={() => {
+              if (locked) return
+              setActive(tab.id)
+            }}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-medium transition-all relative"
+            style={{
+              backgroundColor: isActive ? 'var(--tab-active)' : 'transparent',
+              color: locked ? 'var(--muted)' : isActive ? 'var(--tab-active-text)' : 'var(--muted)',
+              boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+              opacity: locked ? 0.5 : 1,
+              cursor: locked ? 'not-allowed' : 'pointer',
+            }}
+            title={locked ? 'Upgrade naar Pro' : undefined}
+          >
+            <span className="text-xs">{tab.icon}</span>
+            <span className="hidden sm:block">{tab.label}</span>
+            {locked && (
+              <span className="text-xs leading-none" style={{ fontSize: 9 }}>🔒</span>
+            )}
+          </button>
+        )
+      })}
     </div>
   )
 }

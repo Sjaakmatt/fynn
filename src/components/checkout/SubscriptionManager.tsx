@@ -14,7 +14,7 @@ export default function SubscriptionManager() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/ai/subscriptions')
+    fetch('/api/subscriptions')
       .then(r => r.json())
       .then(data => {
         setSubscriptions(data.subscriptions ?? [])
