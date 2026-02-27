@@ -2,9 +2,9 @@
 
 import { useState, createContext, useContext } from 'react'
 
-type Tab = 'overzicht' | 'analyse' | 'coach' | 'check' | 'budget' | 'kalender'
+type Tab = 'overzicht' | 'analyse' | 'budget' | 'kalender' | 'sparen'
 
-const TabContext = createContext<{ 
+const TabContext = createContext<{
   active: Tab
   setActive: (t: Tab) => void
   isPro: boolean
@@ -20,11 +20,10 @@ export function useTab() {
 
 const TABS: { id: Tab; label: string; icon: string; proOnly: boolean }[] = [
   { id: 'overzicht', label: 'Overzicht', icon: '◎', proOnly: false },
-  { id: 'analyse',  label: 'Analyse',  icon: '↗', proOnly: false },
-  { id: 'coach',    label: 'Coach',    icon: '✦', proOnly: true  },
-  { id: 'budget',   label: 'Budget',   icon: '◈', proOnly: true  },
-  { id: 'kalender', label: 'Kalender', icon: '▦', proOnly: false },
-  { id: 'check',    label: 'Check',    icon: '✓', proOnly: true  },
+  { id: 'analyse',   label: 'Analyse',   icon: '↗', proOnly: false },
+  { id: 'kalender',  label: 'Kalender',  icon: '▦', proOnly: false },
+  { id: 'sparen',    label: 'Sparen',    icon: '◉', proOnly: true  },
+  { id: 'budget',    label: 'Budget',    icon: '◈', proOnly: true  },
 ]
 
 export function TabProvider({ children, isPro }: { children: React.ReactNode; isPro: boolean }) {
@@ -48,10 +47,7 @@ export function TabBar() {
         return (
           <button
             key={tab.id}
-            onClick={() => {
-              if (locked) return
-              setActive(tab.id)
-            }}
+            onClick={() => { if (!locked) setActive(tab.id) }}
             className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-medium transition-all relative"
             style={{
               backgroundColor: isActive ? 'var(--tab-active)' : 'transparent',

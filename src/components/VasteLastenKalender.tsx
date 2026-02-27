@@ -221,6 +221,8 @@ export default function VasteLastenKalender() {
               const isToday = day === today.getDate()
               const dayItems = byDay[day] ?? []
               const hasWarning = dayItems.some(item => item.warning)
+              const col = (firstDayOfMonth + day - 1) % 7
+              const flipTooltip = col >= 5 // vrijdag en zaterdag → tooltip naar links
 
               return (
                 <div key={day}
@@ -263,9 +265,14 @@ export default function VasteLastenKalender() {
                           €{item.amount.toFixed(0)}
                         </p>
 
-                        {/* Hover tooltip */}
-                        <div className="absolute bottom-full left-0 z-50 mb-1 hidden group-hover:block"
-                          style={{ minWidth: 180 }}>
+                        {/* Hover tooltip — gespiegeld aan de rechterkant */}
+                        <div
+                          className="absolute bottom-full z-50 mb-1 hidden group-hover:block"
+                          style={{
+                            minWidth: 180,
+                            left: flipTooltip ? 'auto' : 0,
+                            right: flipTooltip ? 0 : 'auto',
+                          }}>
                           <div className="rounded-xl p-3 shadow-lg"
                             style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
                             <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text)' }}>
@@ -289,8 +296,16 @@ export default function VasteLastenKalender() {
                               🔄 Terugkerend · maandelijks
                             </p>
                           </div>
-                          <div className="w-2 h-2 rotate-45 ml-2"
-                            style={{ backgroundColor: 'var(--surface)', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)', marginTop: -5 }} />
+                          {/* Pijltje */}
+                          <div className="w-2 h-2 rotate-45"
+                            style={{
+                              backgroundColor: 'var(--surface)',
+                              borderRight: '1px solid var(--border)',
+                              borderBottom: '1px solid var(--border)',
+                              marginTop: -5,
+                              marginLeft: flipTooltip ? 'auto' : 8,
+                              marginRight: flipTooltip ? 8 : 'auto',
+                            }} />
                         </div>
                       </div>
                     )
