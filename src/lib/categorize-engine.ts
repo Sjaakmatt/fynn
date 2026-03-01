@@ -37,12 +37,6 @@ const RULES: Rule[] = [
     category: 'inkomen',
     amountCheck: (a) => a > 0,
   },
-  {
-    // Spaarrekening overboeking INKOMEND (positief bedrag)
-    keywords: ['spaarrekening overboeking', 'van spaar', 'spaar naar'],
-    category: 'inkomen',
-    amountCheck: (a) => a > 0,
-  },
 
   // ── SPAREN ───────────────────────────────────────────────────────
   {
@@ -250,11 +244,6 @@ export function categorizeTransaction(description: string, amount: number): Cate
       }
     }
   }
-
-  // Fallbacks op basis van bedrag
-  if (amount > 1000) return 'inkomen'
-  if (amount > 0) return 'overig'
-
   return 'overig'
 }
 

@@ -1,5 +1,7 @@
 'use client'
 
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { TabProvider, TabBar, TabPanel } from './TabNav'
 import ThemeToggle from './ThemeToggle'
 import ChatCoach from './ChatCoach'
@@ -10,13 +12,13 @@ import BudgetPlanner from './BudgetPlanner'
 import HealthScore from './HealthScore'
 import FinancialRadar from './FinancialRadar'
 import SubscriptionBanner from './checkout/SubscriptionBanner'
-import ConnectBank from '@/components/ConnectBank'
 import CategoryBreakdown from './CategoryBreakdown'
 import OnboardingFlow from './OnboardingFlow'
 import AFMDisclaimer from './AFMDisclaimer'
 import VasteLastenKalender from './VasteLastenKalender'
 import SpaargoalCoach from './SpaargoalCoach'
 import CoachModal from './CoachModal'
+import BankConnectModal from './BankConnectModal'
 
 const CATEGORY_ICONS: Record<string, string> = {
   'wonen': '🏠', 'boodschappen': '🛒', 'eten & drinken': '🍽️',
@@ -47,8 +49,19 @@ export default function DashboardShell({
   user, accounts, stats, sortedCategories, briefing,
   transactionCount, subscriptionStatus, trialEndsAt, isPro
 }: Props) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    if (searchParams.get('connected') === 'true') {
+      router.replace('/dashboard')
+      router.refresh()
+    }
+  }, [])
+
   const firstName = user.email?.split('@')[0] ?? 'daar'
-  const hasData = accounts.length > 0 && transactionCount > 0
+  const hasData = accounts.length > 0
+  const [showBankModal, setShowBankModal] = useState(false)
 
   return (
     <TabProvider isPro={isPro}>
@@ -66,6 +79,18 @@ export default function DashboardShell({
               <span className="font-semibold" style={{ color: 'var(--text)' }}>Fynn</span>
             </div>
             <div className="flex items-center gap-2">
+              {hasData && (
+                <button
+                  onClick={() => setShowBankModal(true)}
+                  className="text-xs px-3 py-1.5 rounded-lg transition-all"
+                  style={{
+                    backgroundColor: 'var(--tab-bg)',
+                    color: 'var(--muted)',
+                    border: '1px solid var(--border)',
+                  }}>
+                  + Bank
+                </button>
+              )}
               <ThemeToggle />
             </div>
           </div>
@@ -83,14 +108,7 @@ export default function DashboardShell({
             <OnboardingFlow userId={user.id} isPro={isPro} />
           )}
 
-          {/* Reconnect + Banner — altijd zichtbaar */}
-          {hasData && (
-            <ConnectBank
-              userId={user.id}
-              label="Rekening opnieuw koppelen"
-              compact={true}
-            />
-          )}
+          {/* Banner — altijd zichtbaar */}
           <SubscriptionBanner
             status={subscriptionStatus}
             trialEndsAt={trialEndsAt}
@@ -112,7 +130,7 @@ export default function DashboardShell({
                   na inkomen (€{stats.totalInkomen.toFixed(0)}) en uitgaven (€{stats.totalUitgaven.toFixed(0)})
                 </p>
 
-                {/* Rekeningen inline — compact */}
+                {/* Rekeningen inline */}
                 <div className="border-t border-white/10 pt-4 space-y-2">
                   {accounts.map(account => (
                     <div key={account.id} className="flex items-center justify-between">
@@ -127,6 +145,16 @@ export default function DashboardShell({
                       )}
                     </div>
                   ))}
+                  <button
+                    onClick={() => setShowBankModal(true)}
+                    className="w-full mt-2 py-2 rounded-xl text-xs font-medium transition-all"
+                    style={{
+                      backgroundColor: 'rgba(255,255,255,0.1)',
+                      color: 'rgba(255,255,255,0.7)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                    }}>
+                    + Extra rekening koppelen
+                  </button>
                 </div>
               </div>
 
@@ -184,7 +212,7 @@ export default function DashboardShell({
                 </div>
               )}
 
-              {/* ── BLOK 3: Score + spaarquote ── */}
+              {/* ── BLOK 3: Score ── */}
               <HealthScore />
 
             </TabPanel>
@@ -198,7 +226,6 @@ export default function DashboardShell({
                 sortedCategories={sortedCategories}
                 totalUitgaven={stats.totalUitgaven}
               />
-              {/* Abonnementenbeheer — alleen Pro */}
               {isPro ? (
                 <SubscriptionManager />
               ) : (
@@ -220,21 +247,18 @@ export default function DashboardShell({
             </TabPanel>
           )}
 
-
           {hasData && (
             <TabPanel id="kalender">
               <VasteLastenKalender />
             </TabPanel>
           )}
 
-          {/* SPAREN TAB — alleen Pro */}
           {hasData && isPro && (
             <TabPanel id="sparen">
               <SpaargoalCoach />
             </TabPanel>
           )}
 
-          {/* BUDGET TAB — alleen Pro */}
           {hasData && isPro && (
             <TabPanel id="budget">
               <BudgetPlanner />
@@ -242,11 +266,13 @@ export default function DashboardShell({
             </TabPanel>
           )}
 
-
         </main>
 
-        {/* Floating Coach button — altijd bereikbaar */}
         {hasData && <CoachModal isPro={isPro} />}
+
+        {showBankModal && (
+          <BankConnectModal onClose={() => setShowBankModal(false)} />
+        )}
 
       </div>
     </TabProvider>
