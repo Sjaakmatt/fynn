@@ -233,7 +233,7 @@ export default function SavingsSetup({ onComplete }: Props) {
             onClick={onComplete}
             className="flex-1 py-3 rounded-xl text-sm transition-all"
             style={{ border: '1px solid var(--border)', color: 'var(--muted)' }}>
-            Overslaan
+            Skip
           </button>
           <button
             onClick={handleSave}
