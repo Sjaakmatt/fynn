@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { categorizeTransaction } from '@/lib/categorize-engine'
+import { cleanDescription } from '@/lib/clean-description'
 
 // ─── INTERNE TRANSFER DETECTIE ───────────────────────────────────────────────
 // Overboekingen tussen eigen rekeningen zijn geen inkomen.
@@ -167,7 +168,7 @@ export async function POST(request: NextRequest) {
 
       recurringItems.push({
         user_id: user.id,
-        description: txs[txs.length - 1].description?.slice(0, 255) ?? '',
+        description: cleanDescription(txs[txs.length - 1].description ?? '').slice(0, 255),
         amount: -(Math.round(avg * 100) / 100),
         category: txs[txs.length - 1].category
           ?? categorizeTransaction(txs[txs.length - 1].description ?? '', -avg),
@@ -199,7 +200,7 @@ export async function POST(request: NextRequest) {
 
       recurringItems.push({
         user_id: user.id,
-        description: lastTx?.description?.slice(0, 255) ?? 'Inkomen',
+        description: lastTx ? cleanDescription(lastTx.description ?? '').slice(0, 255) : 'Inkomen',
         amount: Math.round(avg * 100) / 100,
         category: 'inkomen',
         day_of_month: medianDay,

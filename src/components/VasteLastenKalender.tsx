@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { cleanDescription } from '@/lib/clean-description'
 
 interface CalendarItem {
   name: string
@@ -178,7 +179,9 @@ export default function VasteLastenKalender() {
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>{item.name}</p>
+                    <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+                     {cleanDescription(item.name)}
+                     </p>
                     <p className="text-xs" style={{ color: itemColor }}>
                       {item.isPast
                         ? '✓ Betaald deze maand'
