@@ -1,27 +1,78 @@
 // src/app/api/recurring/detect/route.ts
-//
-// Detecteert vaste lasten en inkomen op basis van transactiehistorie.
-// Wordt aangeroepen na elke bank sync (in de callback route).
-// Werkt voor Enable Banking én toekomstige providers — puur op transactiedata.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { categorizeTransaction } from '@/lib/categorize-engine'
 
-// Minimale variantie om als "consistent" te gelden (15%)
-const VARIANCE_THRESHOLD = 0.15
+// ─── INTERNE TRANSFER DETECTIE ───────────────────────────────────────────────
+// Overboekingen tussen eigen rekeningen zijn geen inkomen.
+// Herkenbaar aan: SEPA Overboeking/Periodieke overb. + eigen IBAN of eigen naam.
 
-// Minimaal 2x voorkomen om als recurring te tellen
-const MIN_OCCURRENCES = 2
+const INTERNAL_TRANSFER_SIGNALS = [
+  'salarisrekening',        // ABN AMRO interne overboeking label
+  'spaarrekening',          // overboeking naar/van spaarrekening
+  'maandelijks spaargeld',
+  'zakgeld',
+  'boodschappen',           // eigen budgetrekening
+  'gezamenlijke',
+  'kindertoekomst',
+  'jongerengroeirekening',
+  'eigen rekening',
+]
 
-function normalizeKey(description: string): string {
-  return description
-    .toLowerCase()
-    .replace(/\d{6,}/g, '#')        // lange nummers → placeholder (referenties, klantnummers)
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 60)
+function isInternalTransfer(description: string): boolean {
+  const d = description.toLowerCase()
+  // Periodieke overboekingen zijn bijna altijd intern
+  if (d.includes('sepa periodieke overb')) return true
+  // Check op bekende interne labels
+  return INTERNAL_TRANSFER_SIGNALS.some(signal => d.includes(signal))
 }
+
+// ─── SALARIS CLUSTERING ──────────────────────────────────────────────────────
+// Groepeert transacties die waarschijnlijk hetzelfde salaris zijn:
+// - Bedrag binnen 10% van elkaar
+// - Dag van de maand binnen 7 dagen van elkaar
+// - Altijd positief (inkomst)
+
+function clusterSalary(
+  groups: Map<string, { amount: number; date: string }[]>
+): { amount: number; date: string }[][] {
+  const allGroups = Array.from(groups.values()).filter(g => g.length >= 2)
+  const clusters: { amount: number; date: string }[][] = []
+  const used = new Set<number>()
+
+  for (let i = 0; i < allGroups.length; i++) {
+    if (used.has(i)) continue
+
+    const cluster = [...allGroups[i]]
+    const avgAmount = cluster.reduce((s, t) => s + t.amount, 0) / cluster.length
+
+    // Zoek vergelijkbare groepen om samen te voegen
+    for (let j = i + 1; j < allGroups.length; j++) {
+      if (used.has(j)) continue
+      const other = allGroups[j]
+      const otherAvg = other.reduce((s, t) => s + t.amount, 0) / other.length
+
+      // Binnen 10% bedrag EN binnen 7 dagen
+      const amountSimilar = Math.abs(avgAmount - otherAvg) / avgAmount < 0.10
+      const avgDay = (d: { date: string }[]) =>
+        d.reduce((s, t) => s + parseInt(t.date.split('-')[2]), 0) / d.length
+      const daySimilar = Math.abs(avgDay(cluster) - avgDay(other)) <= 7
+
+      if (amountSimilar && daySimilar) {
+        cluster.push(...other)
+        used.add(j)
+      }
+    }
+
+    used.add(i)
+    clusters.push(cluster)
+  }
+
+  return clusters
+}
+
+// ─── MAIN ROUTE ──────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,7 +80,7 @@ export async function POST(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    // Haal alle transacties op van de afgelopen 6 maanden
+    // Haal transacties op van afgelopen 6 maanden
     const sixMonthsAgo = new Date()
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
 
@@ -42,23 +93,55 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error
     if (!transactions || transactions.length === 0) {
-      return NextResponse.json({ message: 'Geen transacties gevonden', detected: 0 })
+      return NextResponse.json({ message: 'Geen transacties', detected: 0 })
     }
 
-    // Groepeer op genormaliseerde description
-    // Aparte groepen voor inkomsten (positief) en uitgaven (negatief)
-    const groups = new Map<string, typeof transactions>()
+    // ── STAP 1: Groepeer uitgaven op genormaliseerde description ─────
+    const expenseGroups = new Map<string, typeof transactions>()
 
     for (const tx of transactions) {
       const amount = parseFloat(tx.amount)
-      const direction = amount > 0 ? 'in' : 'out'
-      const key = `${direction}::${normalizeKey(tx.description ?? '')}`
+      if (amount >= 0) continue   // alleen uitgaven hier
 
-      if (!groups.has(key)) groups.set(key, [])
-      groups.get(key)!.push(tx)
+      const key = tx.description
+        ?.toLowerCase()
+        .replace(/\d{6,}/g, '#')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 60) ?? ''
+
+      if (!expenseGroups.has(key)) expenseGroups.set(key, [])
+      expenseGroups.get(key)!.push(tx)
     }
 
-    // Detecteer recurring patronen
+    // ── STAP 2: Groepeer inkomsten apart ─────────────────────────────
+    // Voor inkomen gebruiken we ruimere matching — bedrag mag ±15% afwijken
+    const incomeRaw = transactions.filter(tx => parseFloat(tx.amount) > 0)
+
+    // Groepeer inkomen op genormaliseerde description (zelfde logica)
+    const incomeGroups = new Map<string, { amount: number; date: string }[]>()
+
+    for (const tx of incomeRaw) {
+      const amount = parseFloat(tx.amount)
+
+      // Skip interne transfers
+      if (isInternalTransfer(tx.description ?? '')) continue
+
+      const key = tx.description
+        ?.toLowerCase()
+        .replace(/\d{6,}/g, '#')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 60) ?? ''
+
+      if (!incomeGroups.has(key)) incomeGroups.set(key, [])
+      incomeGroups.get(key)!.push({ amount, date: tx.transaction_date })
+    }
+
+    // ── STAP 3: Cluster salaris (zelfde bron, wisselend bedrag/dag) ──
+    const incomeClusters = clusterSalary(incomeGroups)
+
+    // ── STAP 4: Bouw recurring items ─────────────────────────────────
     const recurringItems: {
       user_id: string
       description: string
@@ -69,53 +152,69 @@ export async function POST(request: NextRequest) {
       last_seen: string
     }[] = []
 
-    for (const [, txs] of groups) {
-      if (txs.length < MIN_OCCURRENCES) continue
+    // Vaste UITGAVEN
+    for (const [, txs] of expenseGroups) {
+      if (txs.length < 2) continue
 
       const amounts = txs.map(t => Math.abs(parseFloat(t.amount)))
       const avg = amounts.reduce((a, b) => a + b, 0) / amounts.length
+      const consistent = amounts.every(a => Math.abs(a - avg) / avg < 0.15)
+      if (!consistent) continue
 
-      // Check of bedragen consistent zijn
-      const isConsistent = amounts.every(a => Math.abs(a - avg) / avg < VARIANCE_THRESHOLD)
-      if (!isConsistent) continue
-
-      const isIncome = parseFloat(txs[0].amount) > 0
       const sortedDates = txs.map(t => t.transaction_date).sort()
       const lastDate = sortedDates[sortedDates.length - 1]
       const dayOfMonth = parseInt(lastDate.split('-')[2])
 
-      // Confidence op basis van aantal keer gezien
-      const confidence = txs.length >= 6 ? 0.99
-        : txs.length >= 4 ? 0.95
-        : txs.length === 3 ? 0.85
-        : 0.70
-
-      const finalAmount = Math.round(avg * 100) / 100
-
       recurringItems.push({
         user_id: user.id,
         description: txs[txs.length - 1].description?.slice(0, 255) ?? '',
-        amount: isIncome ? finalAmount : -finalAmount,
-        category: isIncome
-          ? 'inkomen'
-          : (txs[txs.length - 1].category ?? categorizeTransaction(txs[txs.length - 1].description ?? '', -finalAmount)),
+        amount: -(Math.round(avg * 100) / 100),
+        category: txs[txs.length - 1].category
+          ?? categorizeTransaction(txs[txs.length - 1].description ?? '', -avg),
         day_of_month: dayOfMonth,
-        confidence,
+        confidence: txs.length >= 6 ? 0.99 : txs.length >= 4 ? 0.95 : txs.length === 3 ? 0.85 : 0.70,
         last_seen: lastDate,
       })
     }
 
-    // Vervang alle recurring items voor deze user
-    await supabase
-      .from('recurring_items')
-      .delete()
-      .eq('user_id', user.id)
+    // Vaste INKOMSTEN (geclusterd)
+    for (const cluster of incomeClusters) {
+      if (cluster.length < 2) continue
+
+      const amounts = cluster.map(t => t.amount)
+      const avg = amounts.reduce((a, b) => a + b, 0) / amounts.length
+
+      // Mediane dag — robuuster dan gemiddelde bij weekend-verschuivingen
+      const days = cluster.map(t => parseInt(t.date.split('-')[2])).sort((a, b) => a - b)
+      const medianDay = days[Math.floor(days.length / 2)]
+
+      const sortedDates = cluster.map(t => t.date).sort()
+      const lastDate = sortedDates[sortedDates.length - 1]
+
+      // Gebruik de meest recente description uit de cluster
+      const lastTx = transactions
+        .filter(tx => parseFloat(tx.amount) > 0)
+        .filter(tx => !isInternalTransfer(tx.description ?? ''))
+        .find(tx => tx.transaction_date === lastDate)
+
+      recurringItems.push({
+        user_id: user.id,
+        description: lastTx?.description?.slice(0, 255) ?? 'Inkomen',
+        amount: Math.round(avg * 100) / 100,
+        category: 'inkomen',
+        day_of_month: medianDay,
+        confidence: cluster.length >= 6 ? 0.99 : cluster.length >= 4 ? 0.95 : cluster.length === 3 ? 0.85 : 0.70,
+        last_seen: lastDate,
+      })
+    }
+
+    // ── STAP 5: Opslaan ──────────────────────────────────────────────
+    await supabase.from('recurring_items').delete().eq('user_id', user.id)
 
     if (recurringItems.length > 0) {
       const { error: insertError } = await supabase
         .from('recurring_items')
         .insert(recurringItems)
-
       if (insertError) throw insertError
     }
 

@@ -2,12 +2,7 @@
  * Fynn — ABN AMRO XLS Import Script
  *
  * Gebruik:
- *   1. Download transacties via ABN AMRO internetbankieren → Exporteren → Microsoft Excel
- *   2. Zet env variabelen in .env.local: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
- *   3. Run: SEED_USER_ID=jouw-uuid npx tsx scripts/import-abn-amro.ts "C:\pad\naar\export.xls"
- *
- * ABN AMRO kolomvolgorde (geen header):
- *   Rekeningnummer | Muntsoort | Transactiedatum | Beginstand | Eindstand | Rentedatum | Bedrag | Omschrijving
+ *   $env:SEED_USER_ID="uuid"; $env:SEED_SESSION_COOKIE="sb-..."; npx tsx scripts/import-abn-amro.ts "C:\pad\naar\export.xls"
  */
 
 import dotenv from 'dotenv'
@@ -16,22 +11,17 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
 import * as fs from 'fs'
 import { createClient } from '@supabase/supabase-js'
-import { categorizeTransaction } from '../src/lib/categorize-engine'
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
 const TARGET_USER_ID = process.env.SEED_USER_ID!
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+const SESSION_COOKIE = process.env.SEED_SESSION_COOKIE ?? ''
 
-if (!TARGET_USER_ID) {
-  console.error('❌ Zet SEED_USER_ID in je environment.')
-  console.error('   Gebruik: SEED_USER_ID=uuid npx tsx scripts/import-abn-amro.ts export.xls')
-  process.exit(1)
-}
-
-if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-  console.error('❌ NEXT_PUBLIC_SUPABASE_URL of SUPABASE_SERVICE_ROLE_KEY ontbreekt in .env.local')
+if (!TARGET_USER_ID || !SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+  console.error('❌ Zet SEED_USER_ID, NEXT_PUBLIC_SUPABASE_URL en SUPABASE_SERVICE_ROLE_KEY in .env.local')
   process.exit(1)
 }
 
@@ -42,10 +32,10 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 interface AbnRow {
   accountNumber: string
   currency: string
-  transactionDate: string   // YYYY-MM-DD
+  transactionDate: string
+  valueDate: string
   startBalance: number
   endBalance: number
-  valueDate: string
   amount: number
   description: string
 }
@@ -53,33 +43,38 @@ interface AbnRow {
 // ─── PARSER ──────────────────────────────────────────────────────────────────
 
 function parseDate(raw: string): string {
-  const s = raw.trim()
-  // YYYYMMDD
+  const s = raw.trim().replace('.0', '')
   if (/^\d{8}$/.test(s)) return `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`
-  // DD-MM-YYYY of DD.MM.YYYY of DD/MM/YYYY
   const match = s.match(/^(\d{2})[-./](\d{2})[-./](\d{4})$/)
   if (match) return `${match[3]}-${match[2]}-${match[1]}`
-  // Al YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
   return s
 }
 
 function parseAmount(raw: string): number {
   const s = raw.trim()
-  // "1.234,56" → NL formaat
   if (s.includes(',') && s.lastIndexOf(',') > s.lastIndexOf('.')) {
-    return parseFloat(s.replace('.', '').replace(',', '.'))
+    return parseFloat(s.replace(/\./g, '').replace(',', '.'))
   }
   return parseFloat(s.replace(',', ''))
 }
 
+function detectColumnMap(headers: string[]) {
+  const h = headers.map(s => s.toLowerCase().trim())
+  // Formaat A: Rekeningnummer | Muntsoort | Transactiedatum | Rentedatum | Beginsaldo | Eindsaldo | Transactiebedrag | Omschrijving
+  // Formaat B: Rekeningnummer | Muntsoort | Transactiedatum | Beginstand | Eindstand  | Rentedatum | Bedrag | Omschrijving
+  const isFormatA = h[3] === 'rentedatum'
+  return isFormatA
+    ? { accountNumber: 0, currency: 1, transactionDate: 2, valueDate: 3, startBalance: 4, endBalance: 5, amount: 6, description: 7 }
+    : { accountNumber: 0, currency: 1, transactionDate: 2, valueDate: 5, startBalance: 3, endBalance: 4, amount: 6, description: 7 }
+}
+
 function parseAbnXls(filePath: string): AbnRow[] {
   const buffer = fs.readFileSync(filePath)
+  const isBinaryXls = buffer[0] === 0xD0 && buffer[1] === 0xCF
+  const isXlsx = buffer[0] === 0x50 && buffer[1] === 0x4B
 
-  const isBinaryXls = buffer[0] === 0xD0 && buffer[1] === 0xCF  // OLE2
-  const isXlsx = buffer[0] === 0x50 && buffer[1] === 0x4B        // ZIP/xlsx
-
-  let lines: string[]
+  let rawLines: string[][]
 
   if (isBinaryXls || isXlsx) {
     try {
@@ -87,86 +82,97 @@ function parseAbnXls(filePath: string): AbnRow[] {
       const XLSX = require('xlsx')
       const workbook = XLSX.read(buffer, { type: 'buffer' })
       const sheet = workbook.Sheets[workbook.SheetNames[0]]
-      const raw: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false })
-      lines = raw
-        .filter((row: string[]) => row.length >= 8)
-        .map((row: string[]) => row.join('\t'))
+      rawLines = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false }) as string[][]
     } catch {
-      console.error('❌ Kon XLS niet lezen. Installeer: npm install xlsx')
+      console.error('❌ Installeer: npm install xlsx')
       process.exit(1)
     }
   } else {
-    // ABN's "nep" XLS — gewoon tab-separated tekst
     const content = buffer.toString('utf-8').replace(/\r/g, '')
-    lines = content.split('\n').filter(l => l.trim().length > 0)
+    rawLines = content.split('\n')
+      .filter(l => l.trim().length > 0)
+      .map(l => l.split('\t').map(c => c.trim().replace(/^"|"$/g, '')))
   }
+
+  if (rawLines.length === 0) return []
+
+  const firstRow = rawLines[0].map(s => s.toLowerCase().trim())
+  const hasHeader = firstRow.includes('rekeningnummer') || firstRow.includes('accountnummer')
+  const colMap = detectColumnMap(rawLines[0])
+  const startIndex = hasHeader ? 1 : 0
 
   const rows: AbnRow[] = []
-
-  for (const line of lines) {
-    const cols = line.split('\t').map(c => c.trim().replace(/^"|"$/g, ''))
-    if (cols.length < 8) continue
-    if (/rekeningnummer|accountnummer|datum/i.test(cols[0])) continue
-
-    const amount = parseAmount(cols[6])
+  for (let i = startIndex; i < rawLines.length; i++) {
+    const cols = rawLines[i]
+    if (!cols || cols.length < 8) continue
+    const accountRaw = cols[colMap.accountNumber]?.trim().replace('.0', '')
+    if (!accountRaw) continue
+    const amount = parseAmount(cols[colMap.amount])
     if (isNaN(amount)) continue
-
     rows.push({
-      accountNumber: cols[0],
-      currency: cols[1] || 'EUR',
-      transactionDate: parseDate(cols[2]),
-      startBalance: parseAmount(cols[3]),
-      endBalance: parseAmount(cols[4]),
-      valueDate: cols[5],
+      accountNumber: accountRaw,
+      currency: cols[colMap.currency]?.trim() || 'EUR',
+      transactionDate: parseDate(cols[colMap.transactionDate]),
+      valueDate: cols[colMap.valueDate]?.trim(),
+      startBalance: parseAmount(cols[colMap.startBalance]),
+      endBalance: parseAmount(cols[colMap.endBalance]),
       amount,
-      description: cols[7] || '',
+      description: cols[colMap.description]?.trim() || '',
     })
   }
-
   return rows
 }
 
-// ─── RECURRING ITEMS DETECTIE ────────────────────────────────────────────────
+// ─── ACCOUNT TYPE DETECTIE ───────────────────────────────────────────────────
+// Spaarrekening = heeft "direct sparen" of "creditrente" EN geen dagelijkse uitgaven (AH, Jumbo, etc.)
 
-function detectRecurring(rows: AbnRow[]) {
-  const groups = new Map<string, AbnRow[]>()
+const DAILY_SPENDING_KEYWORDS = [
+  'albert heijn', 'jumbo', 'lidl', 'aldi', 'bea,', 'apple pay',
+  'pin ', 'mcdonalds', 'restaurant', 'cafe', 'tankstation', 'shell',
+]
 
-  for (const row of rows) {
-    if (row.amount >= 0) continue
-    const key = row.description
-      .toLowerCase()
-      .replace(/\d{6,}/g, '#')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 60)
-    if (!groups.has(key)) groups.set(key, [])
-    groups.get(key)!.push(row)
+function detectAccountInfo(accountNumber: string, rows: AbnRow[]): {
+  name: string
+  type: 'SAVINGS' | 'CHECKING'
+} {
+  const descriptions = rows
+    .filter(r => r.accountNumber === accountNumber)
+    .map(r => r.description.toLowerCase())
+
+  const hasDailySpending = descriptions.some(d =>
+    DAILY_SPENDING_KEYWORDS.some(kw => d.includes(kw))
+  )
+
+  const hasSavingsSignal = descriptions.some(d =>
+    d.includes('direct sparen') || d.includes('creditrente') ||
+    d.includes('spaarrekening') || d.includes('deposito')
+  )
+
+  if (hasSavingsSignal && !hasDailySpending) {
+    return { name: 'ABN AMRO Spaarrekening', type: 'SAVINGS' }
   }
 
-  const recurring = []
+  return { name: 'ABN AMRO Betaalrekening', type: 'CHECKING' }
+}
 
-  for (const [, txs] of groups) {
-    if (txs.length < 2) continue
-    const amounts = txs.map(t => Math.abs(t.amount))
-    const avg = amounts.reduce((a, b) => a + b, 0) / amounts.length
-    const consistent = amounts.every(a => Math.abs(a - avg) < avg * 0.15)
-    if (!consistent) continue
+// ─── API PIPELINE ─────────────────────────────────────────────────────────────
 
-    const sortedDates = txs.map(t => t.transactionDate).sort()
-    const lastDate = sortedDates[sortedDates.length - 1]
-
-    recurring.push({
-      user_id: TARGET_USER_ID,
-      description: txs[0].description.slice(0, 255),
-      amount: -(Math.round(avg * 100) / 100),
-      category: categorizeTransaction(txs[0].description, -avg),
-      day_of_month: parseInt(lastDate.split('-')[2]),
-      confidence: txs.length >= 4 ? 0.95 : txs.length === 3 ? 0.85 : 0.70,
-      last_seen: lastDate,
+async function callApi(route: string): Promise<void> {
+  if (!SESSION_COOKIE) {
+    console.warn(`  ⚠️  SEED_SESSION_COOKIE niet ingesteld — ${route} overgeslagen`)
+    return
+  }
+  try {
+    const res = await fetch(`${APP_URL}${route}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Cookie': SESSION_COOKIE },
     })
+    const data = await res.json()
+    if (!res.ok) console.warn(`  ⚠️  ${route} HTTP ${res.status}:`, data)
+    else console.log(`  ✅ ${route}:`, JSON.stringify(data))
+  } catch (e) {
+    console.warn(`  ⚠️  ${route} mislukt:`, e)
   }
-
-  return recurring
 }
 
 // ─── MAIN ────────────────────────────────────────────────────────────────────
@@ -175,143 +181,133 @@ async function main() {
   const filePath = process.argv[2]
   if (!filePath || !fs.existsSync(filePath)) {
     console.error(`❌ Bestand niet gevonden: ${filePath}`)
-    console.error('   Gebruik: SEED_USER_ID=uuid npx tsx scripts/import-abn-amro.ts "C:\\pad\\naar\\export.xls"')
     process.exit(1)
   }
 
   console.log(`\n📂 Inladen: ${path.resolve(filePath)}\n`)
 
-  // 1. Parse XLS
-  const rows = parseAbnXls(filePath)
-  if (rows.length === 0) {
-    console.error('❌ Geen transacties gevonden. Controleer of dit een ABN AMRO export is.')
+  const allRows = parseAbnXls(filePath)
+  if (allRows.length === 0) {
+    console.error('❌ Geen transacties gevonden.')
     process.exit(1)
   }
-  console.log(`✅ ${rows.length} transacties geparsed`)
 
-  // 2. Bank account aanmaken of ophalen
-  const accountNumber = rows[0].accountNumber
-  const latestBalance = rows[rows.length - 1].endBalance
+  const accountNumbers = [...new Set(allRows.map(r => r.accountNumber))]
+  console.log(`✅ ${allRows.length} transacties over ${accountNumbers.length} rekening(en):\n`)
+  accountNumbers.forEach(acc => {
+    const { name, type } = detectAccountInfo(acc, allRows)
+    const count = allRows.filter(r => r.accountNumber === acc).length
+    console.log(`   ${name} (${acc}) — ${count} tx — type: ${type}`)
+  })
 
-  const { data: existingAccount } = await supabase
-    .from('bank_accounts')
-    .select('id')
-    .eq('user_id', TARGET_USER_ID)
-    .eq('external_id', accountNumber)
-    .maybeSingle()
+  let totalInserted = 0
 
-  let accountId: string
+  for (const accountNumber of accountNumbers) {
+    const rows = allRows.filter(r => r.accountNumber === accountNumber)
+    const latestBalance = rows[rows.length - 1].endBalance
+    const { name, type } = detectAccountInfo(accountNumber, allRows)
 
-  if (existingAccount) {
-    accountId = existingAccount.id
-    await supabase
+    console.log(`\n━━━ ${name} ━━━`)
+
+    const { data: existingAccount } = await supabase
       .from('bank_accounts')
-      .update({ balance: latestBalance, updated_at: new Date().toISOString() })
-      .eq('id', accountId)
-    console.log(`✅ Bestaand account bijgewerkt, saldo: €${latestBalance}`)
-  } else {
-    const { data: newAccount, error } = await supabase
-      .from('bank_accounts')
-      .insert({
-        user_id: TARGET_USER_ID,
-        institution_name: 'ABN AMRO',
-        account_name: 'ABN AMRO Betaalrekening',
-        iban: accountNumber,
-        currency: rows[0].currency || 'EUR',
-        provider: 'manual_import',
-        external_id: accountNumber,
-        balance: latestBalance,
-        account_type: 'CACC',
-      })
       .select('id')
-      .single()
+      .eq('user_id', TARGET_USER_ID)
+      .eq('external_id', accountNumber)
+      .maybeSingle()
 
-    if (error || !newAccount) {
-      console.error('❌ Bank account aanmaken mislukt:', error?.message)
-      process.exit(1)
+    let accountId: string
+
+    if (existingAccount) {
+      accountId = existingAccount.id
+      await supabase.from('bank_accounts')
+        .update({ balance: latestBalance, account_name: name, account_type: type, updated_at: new Date().toISOString() })
+        .eq('id', accountId)
+      console.log(`✅ Bijgewerkt — saldo: €${latestBalance}`)
+    } else {
+      const { data: newAccount, error } = await supabase
+        .from('bank_accounts')
+        .insert({
+          user_id: TARGET_USER_ID,
+          institution_name: 'ABN AMRO',
+          account_name: name,
+          iban: accountNumber,
+          currency: rows[0].currency || 'EUR',
+          provider: 'manual_import',
+          external_id: accountNumber,
+          balance: latestBalance,
+          account_type: type,
+        })
+        .select('id')
+        .single()
+
+      if (error || !newAccount) {
+        console.error(`❌ Aanmaken mislukt:`, error?.message)
+        continue
+      }
+      accountId = newAccount.id
+      console.log(`✅ Aangemaakt — saldo: €${latestBalance}`)
     }
-    accountId = newAccount.id
-    console.log(`✅ Bank account aangemaakt: ${accountId}`)
+
+    // Transacties opslaan — category null, pipeline doet de rest
+    const txRows = rows.map((row, i) => ({
+      user_id: TARGET_USER_ID,
+      account_id: accountId,
+      amount: row.amount,
+      currency: row.currency || 'EUR',
+      description: row.description,
+      category: null,
+      transaction_date: row.transactionDate,
+      provider: 'manual_import',
+      external_id: `abn_${accountNumber}_${row.transactionDate}_${row.amount}_${i}`,
+    }))
+
+    let inserted = 0
+    for (let i = 0; i < txRows.length; i += 100) {
+      const chunk = txRows.slice(i, i + 100)
+      const { data, error } = await supabase
+        .from('transactions')
+        .upsert(chunk, { onConflict: 'external_id', ignoreDuplicates: true })
+        .select('id')
+      if (error) console.warn(`  ⚠️  Batch ${i}: ${error.message}`)
+      else inserted += data?.length || 0
+    }
+    console.log(`✅ ${inserted} transacties (${rows.length - inserted} al aanwezig)`)
+    totalInserted += inserted
   }
 
-  // 3. Categoriseer via Fynn's eigen engine
-  console.log(`🧠 Categoriseren via Fynn categorize engine...`)
-  const txRows = rows.map((row, i) => ({
-    user_id: TARGET_USER_ID,
-    account_id: accountId,
-    amount: row.amount,
-    currency: row.currency || 'EUR',
-    description: row.description,
-    category: categorizeTransaction(row.description, row.amount),
-    transaction_date: row.transactionDate,
-    provider: 'manual_import',
-    external_id: `abn_${accountNumber}_${row.transactionDate}_${row.amount}_${i}`,
-  }))
-  console.log(`✅ Alle transacties gecategoriseerd`)
-
-  // 4. Importeer in batches van 100
-  console.log(`⏳ Opslaan in Supabase...`)
-  let inserted = 0
-  for (let i = 0; i < txRows.length; i += 100) {
-    const chunk = txRows.slice(i, i + 100)
-    const { data, error } = await supabase
-      .from('transactions')
-      .upsert(chunk, { onConflict: 'external_id', ignoreDuplicates: true })
-      .select('id')
-    if (error) console.warn(`  ⚠️  Batch ${i}: ${error.message}`)
-    else inserted += data?.length || 0
-  }
-  console.log(`✅ ${inserted} transacties opgeslagen (${rows.length - inserted} duplicaten overgeslagen)`)
-
-  // 5. Vaste lasten detecteren en opslaan
-  console.log(`🔄 Vaste lasten detecteren...`)
-  const recurring = detectRecurring(rows)
-  if (recurring.length > 0) {
-    await supabase.from('recurring_items').delete().eq('user_id', TARGET_USER_ID)
-    const { error } = await supabase.from('recurring_items').insert(recurring)
-    if (error) console.warn('  ⚠️  Recurring items fout:', error.message)
-    else console.log(`✅ ${recurring.length} vaste lasten opgeslagen`)
+  // Totaal saldo (alleen betaalrekeningen voor Decision Engine)
+  const balances: Record<string, { balance: number; type: string; name: string }> = {}
+  for (const acc of accountNumbers) {
+    const rows = allRows.filter(r => r.accountNumber === acc)
+    const { name, type } = detectAccountInfo(acc, allRows)
+    balances[acc] = { balance: rows[rows.length - 1].endBalance, type, name }
   }
 
-  // 6. Samenvatting
-  const income = rows.filter(r => r.amount > 0).reduce((s, r) => s + r.amount, 0)
-  const expenses = rows.filter(r => r.amount < 0).reduce((s, r) => s + Math.abs(r.amount), 0)
-
-  const catCount: Record<string, { count: number; total: number }> = {}
-  for (const row of txRows.filter(r => r.amount < 0)) {
-    const cat = row.category
-    if (!catCount[cat]) catCount[cat] = { count: 0, total: 0 }
-    catCount[cat].count++
-    catCount[cat].total += Math.abs(row.amount)
-  }
+  const checkingBalance = Object.values(balances)
+    .filter(a => a.type === 'CHECKING')
+    .reduce((s, a) => s + a.balance, 0)
 
   console.log(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 IMPORT RESULTAAT
+📊 IMPORT KLAAR
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Periode     : ${rows[0].transactionDate} → ${rows[rows.length-1].transactionDate}
-Transacties : ${rows.length}
-Inkomen     : €${income.toFixed(2)}
-Uitgaven    : €${expenses.toFixed(2)}
-Netto       : €${(income - expenses).toFixed(2)}
-Saldo       : €${latestBalance.toFixed(2)}
+Transacties  : ${allRows.length} (${totalInserted} nieuw)
+Rekeningen   :`)
 
-📂 TOP CATEGORIEËN (uitgaven):
-${Object.entries(catCount)
-  .sort((a, b) => b[1].total - a[1].total)
-  .slice(0, 10)
-  .map(([cat, d]) => `  ${cat.padEnd(18)} ${String(d.count).padStart(3)}x   €${d.total.toFixed(0)}`)
-  .join('\n')}
+  Object.values(balances).forEach(a => {
+    console.log(`  ${a.name.padEnd(28)} €${a.balance.toFixed(2)} (${a.type})`)
+  })
+  console.log(`  ${'Decision Engine gebruikt'.padEnd(28)} €${checkingBalance.toFixed(2)} (alleen CHECKING)`)
 
-🔄 VASTE LASTEN GEDETECTEERD (${recurring.length}x):
-${recurring
-  .sort((a, b) => a.amount - b.amount)
-  .slice(0, 10)
-  .map(r => `  €${Math.abs(r.amount).toFixed(2).padStart(8)}  dag ${String(r.day_of_month).padStart(2)}  ${r.description.slice(0, 35)}`)
-  .join('\n')}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ Klaar. Alle transacties zijn gecategoriseerd via Fynn engine.
-  `)
+  // ─── Post-import pipeline ─────────────────────────────────────────
+  console.log(`\n🔄 Post-import pipeline...`)
+  console.log(`  → /api/categorize`)
+  await callApi('/api/categorize')
+  console.log(`  → /api/recurring/detect`)
+  await callApi('/api/recurring/detect')
+
+  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
 }
 
 main().catch(console.error)

@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { TabProvider, TabBar, TabPanel } from './TabNav'
 import ThemeToggle from './ThemeToggle'
-import ChatCoach from './ChatCoach'
-import UitgaveCheck from './UitgaveCheck'
+import SavingsSetup from './SavingsSetup'
 import SubscriptionManager from './checkout/SubscriptionManager'
 import GenerateBriefingButton from './GenerateBriefingButton'
 import BudgetPlanner from './BudgetPlanner'
@@ -29,13 +28,17 @@ const CATEGORY_ICONS: Record<string, string> = {
 
 interface Props {
   user: { id: string; email?: string }
-  accounts: { id: string; account_name: string; iban: string; balance?: number | null }[]
+  accounts: { id: string; account_name: string; iban: string; balance?: number | null; account_type?: string }[]
   stats: {
+    beschikbaar: number
+    nogTeBetalen: number
+    nogTeOntvangen: number
+    reedsBetaald: number
+    totalBalance: number
     totalUitgaven: number
     totalInkomen: number
-    beschikbaar: number
-    spaarpct: string
     totalGespaard: number
+    spaarpct: string
   }
   sortedCategories: [string, { total: number; count: number }][]
   briefing: { content: string; created_at: string } | null
@@ -43,25 +46,32 @@ interface Props {
   subscriptionStatus: string | null
   trialEndsAt: string | null
   isPro: boolean
+  activeMonthLabel?: string
+  isHistoricData?: boolean
+  pendingItems?: { description: string; amount: number; category: string; day_of_month: number }[]
 }
 
 export default function DashboardShell({
   user, accounts, stats, sortedCategories, briefing,
-  transactionCount, subscriptionStatus, trialEndsAt, isPro
+  transactionCount, subscriptionStatus, trialEndsAt, isPro,
+  activeMonthLabel, isHistoricData,
 }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
 
+  const [showSavingsSetup, setShowSavingsSetup] = useState(false)
+  const [showBankModal, setShowBankModal] = useState(false)
+
   useEffect(() => {
     if (searchParams.get('connected') === 'true') {
       router.replace('/dashboard')
-      router.refresh()
+      setShowSavingsSetup(true)
+      setTimeout(() => router.refresh(), 2000)
     }
-  }, [])
+  }, [searchParams, router])
 
   const firstName = user.email?.split('@')[0] ?? 'daar'
   const hasData = accounts.length > 0
-  const [showBankModal, setShowBankModal] = useState(false)
 
   return (
     <TabProvider isPro={isPro}>
@@ -103,8 +113,18 @@ export default function DashboardShell({
 
         <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
 
-          {/* Onboarding */}
-          {!hasData && (
+          {/* Savings setup — toont direct na bank koppelen */}
+          {showSavingsSetup && (
+            <SavingsSetup
+              onComplete={() => {
+                setShowSavingsSetup(false)
+                router.refresh()
+              }}
+            />
+          )}
+
+          {/* Onboarding — toont als er nog geen rekeningen zijn */}
+          {!hasData && !showSavingsSetup && (
             <OnboardingFlow userId={user.id} isPro={isPro} />
           )}
 
@@ -127,24 +147,32 @@ export default function DashboardShell({
                   €{stats.beschikbaar.toFixed(0)}
                 </p>
                 <p className="text-xs opacity-50 mb-5">
-                  na inkomen (€{stats.totalInkomen.toFixed(0)}) en uitgaven (€{stats.totalUitgaven.toFixed(0)})
+                  na saldo (€{stats.totalBalance.toFixed(0)}) min nog te betalen (€{stats.nogTeBetalen.toFixed(0)})
                 </p>
 
-                {/* Rekeningen inline */}
+                {/* Rekeningen */}
                 <div className="border-t border-white/10 pt-4 space-y-2">
-                  {accounts.map(account => (
-                    <div key={account.id} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-green-400" />
-                        <p className="text-sm opacity-80">{account.account_name}</p>
+                  {[...accounts]
+                    .sort((a, b) => {
+                      // Betaalrekeningen eerst, spaarrekeningen onderaan
+                      if (a.account_type === 'SAVINGS') return 1
+                      if (b.account_type === 'SAVINGS') return -1
+                      return 0
+                    })
+                    .map(account => (
+                      <div key={account.id} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: account.account_type === 'SAVINGS' ? '#60a5fa' : '#4ade80' }} />
+                          <p className="text-sm opacity-80">{account.account_name}</p>
+                        </div>
+                        {account.balance != null && (
+                          <p className="text-sm font-semibold">
+                            €{Number(account.balance).toFixed(0)}
+                          </p>
+                        )}
                       </div>
-                      {account.balance != null && (
-                        <p className="text-sm font-semibold">
-                          €{Number(account.balance).toFixed(0)}
-                        </p>
-                      )}
-                    </div>
-                  ))}
+                    ))}
                   <button
                     onClick={() => setShowBankModal(true)}
                     className="w-full mt-2 py-2 rounded-xl text-xs font-medium transition-all"

@@ -2,7 +2,7 @@ import * as jose from 'jose'
 
 const APP_ID = process.env.ENABLE_BANKING_APP_ID!
 const PRIVATE_KEY_PEM = process.env.ENABLE_BANKING_PRIVATE_KEY!
-const BASE_URL = 'https://api.enablebanking.com'
+const BASE_URL = process.env.ENABLE_BANKING_API_URL ?? 'https://api.enablebanking.com'
 
 async function getPrivateKey() {
   return await jose.importPKCS8(PRIVATE_KEY_PEM, 'RS256')
