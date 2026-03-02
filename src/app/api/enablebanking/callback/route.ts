@@ -24,7 +24,6 @@ function log(step: string, data?: unknown, error?: unknown) {
   else console.log(msg)
 }
 
-// Roept een interne API route aan met de sessie-cookie van de originele request
 async function callInternalApi(path: string, request: NextRequest) {
   try {
     const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}${path}`, {
@@ -43,6 +42,81 @@ async function callInternalApi(path: string, request: NextRequest) {
   }
 }
 
+// ── Paginering: haal ALLE transacties op voor een account ─────────────────────
+// Enable Banking geeft max 50 per request terug.
+// Pagination via continuation_key in de response.
+async function fetchAllTransactions(accountId: string): Promise<EBTransaction[]> {
+  const allTransactions: EBTransaction[] = []
+  let continuationKey: string | null = null
+  let page = 1
+  const MAX_PAGES = 50 // veiligheidslimiet: 50 × 50 = 2500 transacties
+
+  // Een jaar terug
+  const dateFrom = new Date()
+  dateFrom.setFullYear(dateFrom.getFullYear() - 1)
+  const dateFromStr = dateFrom.toISOString().split('T')[0]  // YYYY-MM-DD
+
+  do {
+    const url = continuationKey
+      ? `/accounts/${accountId}/transactions?continuation_key=${encodeURIComponent(continuationKey)}`
+      : `/accounts/${accountId}/transactions?date_from=${dateFromStr}`
+
+    const data = await ebFetch(url)
+    const transactions = (data.transactions ?? []) as EBTransaction[]
+    allTransactions.push(...transactions)
+
+    log(`Pagina ${page} opgehaald`, `${transactions.length} transacties (totaal: ${allTransactions.length})`)
+
+    // Check of er een volgende pagina is
+    continuationKey = data.continuation_key ?? null
+    page++
+
+    // Stop als er geen continuation key is of als we geen transacties meer krijgen
+    if (transactions.length === 0) break
+
+  } while (continuationKey && page <= MAX_PAGES)
+
+  if (page > MAX_PAGES) {
+    log('MAX_PAGES bereikt — mogelijk niet alle transacties opgehaald', `${allTransactions.length} totaal`)
+  }
+
+  return allTransactions
+}
+
+// ── Betere accountnaam genereren ──────────────────────────────────────────────
+// Enable Banking geeft soms de rekeninghoudersnaam terug (bijv. "S TER VELD CJ")
+// Wij maken er een leesbare naam van op basis van het account type en product
+function buildAccountName(account: Record<string, unknown>, iban: string): string {
+  const cashType = account.cash_account_type as string ?? ''
+  const product = account.product as string ?? ''
+  const details = account.details as string ?? ''
+
+  // Herken spaarproduten
+  const savingsSignals = ['svgs', 'direct sparen', 'spaar', 'savings', 'deposito']
+  const isSavings = savingsSignals.some(s =>
+    cashType.toLowerCase().includes(s) ||
+    product.toLowerCase().includes(s) ||
+    details.toLowerCase().includes(s)
+  )
+
+  if (isSavings) return 'Spaarrekening'
+
+  // Herken betaalrekening
+  const checkingSignals = ['cacc', 'current', 'betaal', 'checking']
+  const isChecking = checkingSignals.some(s =>
+    cashType.toLowerCase().includes(s) ||
+    product.toLowerCase().includes(s)
+  )
+
+  if (isChecking) return 'Betaalrekening'
+
+  // Fallback: gebruik laatste 4 cijfers van IBAN
+  const last4 = iban.replace(/\s/g, '').slice(-4)
+  return last4 ? `Rekening (...${last4})` : 'Rekening'
+}
+
+// ── MAIN ROUTE ────────────────────────────────────────────────────────────────
+
 export async function GET(request: NextRequest) {
   const supabase = await createClient()
   const { searchParams } = new URL(request.url)
@@ -58,7 +132,7 @@ export async function GET(request: NextRequest) {
   const userId = state.split('::')[0]
   log('Gebruiker', userId)
 
-  // ── Sessie aanmaken ────────────────────────────────────────────────────────
+  // ── Sessie aanmaken ──────────────────────────────────────────────────────────
   let session: Record<string, unknown>
   try {
     session = await ebFetch('/sessions', {
@@ -78,7 +152,7 @@ export async function GET(request: NextRequest) {
   const sessionId = session.session_id as string
   const accounts = (session.accounts as Record<string, unknown>[]) ?? []
 
-  // ── Sessie opslaan ─────────────────────────────────────────────────────────
+  // ── Sessie opslaan ───────────────────────────────────────────────────────────
   const { error: sessionError } = await supabase.from('enablebanking_sessions').upsert({
     user_id: userId,
     session_id: sessionId,
@@ -89,7 +163,7 @@ export async function GET(request: NextRequest) {
   if (sessionError) log('Sessie opslaan mislukt', undefined, sessionError)
   else log('Sessie opgeslagen')
 
-  // ── Accounts + transacties verwerken ──────────────────────────────────────
+  // ── Accounts + transacties verwerken ─────────────────────────────────────────
   let totalAccounts = 0
   let totalTransactions = 0
   let failedAccounts = 0
@@ -97,8 +171,10 @@ export async function GET(request: NextRequest) {
   for (const account of accounts) {
     const ebAccountId = account.uid as string
     const iban = (account.account_id as Record<string, string>)?.iban ?? 'onbekend'
+    const isSavings = (account.cash_account_type as string)?.toLowerCase() === 'svgs'
+    const accountName = buildAccountName(account, iban)
 
-    console.log(`\n━━━ Account: ${iban} (${ebAccountId}) ━━━`)
+    console.log(`\n━━━ Account: ${iban} (${ebAccountId}) → ${accountName} ━━━`)
 
     // Balans ophalen
     let balance: number | null = null
@@ -121,10 +197,10 @@ export async function GET(request: NextRequest) {
     const { error: accountError } = await supabase.from('bank_accounts').upsert({
       user_id: userId,
       external_id: ebAccountId,
-      account_name: account.name ?? account.product ?? account.details ?? 'Rekening',
+      account_name: accountName,
       iban,
       balance,
-      account_type: account.cash_account_type === 'SVGS' ? 'SAVINGS' : 'CHECKING',
+      account_type: isSavings ? 'SAVINGS' : 'CHECKING',
       provider: 'enablebanking',
       updated_at: new Date().toISOString(),
     }, { onConflict: 'external_id' })
@@ -149,76 +225,13 @@ export async function GET(request: NextRequest) {
     }
 
     const internalAccountId = savedAccount.id
-    log('Account opgeslagen', { internalId: internalAccountId, iban })
+    log('Account opgeslagen', { internalId: internalAccountId, iban, name: accountName })
     totalAccounts++
 
-    // Transacties ophalen en opslaan
-    try {
-      const txData = await ebFetch(`/accounts/${ebAccountId}/transactions`)
-      const transactions = (txData.transactions ?? []) as EBTransaction[]
-      log('Transacties ontvangen', `${transactions.length} stuks`)
-
-      let txSuccess = 0
-      let txFailed = 0
-
-      for (const tx of transactions) {
-        const rawAmount = parseFloat(tx.transaction_amount?.amount ?? '0')
-        const amount = tx.credit_debit_indicator === 'DBIT' ? -rawAmount : rawAmount
-        const date = tx.booking_date ?? tx.value_date
-
-        const remittance = Array.isArray(tx.remittance_information) && tx.remittance_information.length > 0
-          ? tx.remittance_information.join(' ').replace(/\n/g, ' ').trim()
-          : null
-
-        const description = remittance
-          ?? tx.creditor?.name
-          ?? tx.debtor?.name
-          ?? tx.bank_transaction_code?.description
-          ?? 'Onbekend'
-
-        const { error: txError } = await supabase.from('transactions').upsert({
-          user_id: userId,
-          external_id: tx.entry_reference ?? `${ebAccountId}-${date}-${amount}-${Math.random()}`,
-          account_id: internalAccountId,
-          description,
-          amount,
-          transaction_date: date,
-          category: null,   // categorisatie gebeurt in de volgende stap
-          provider: 'enablebanking',
-        }, { onConflict: 'external_id' })
-
-        if (txError) {
-          txFailed++
-          if (txFailed === 1) log('TX fout (eerste)', undefined, txError)
-        } else {
-          txSuccess++
-        }
-      }
-
-      log('Transacties opgeslagen', `${txSuccess} ✅  ${txFailed} ❌`)
-      totalTransactions += txSuccess
-    } catch (e) {
-      log(`Transacties ophalen mislukt voor ${iban}`, undefined, e)
-    }
   }
 
-  // ── Samenvatting ───────────────────────────────────────────────────────────
-  console.log('\n━━━ SAMENVATTING ━━━')
-  log('Sync klaar', {
-    accounts_verwerkt: totalAccounts,
-    accounts_mislukt: failedAccounts,
-    transacties_opgeslagen: totalTransactions,
-  })
+  log('Accounts klaar', { accounts_verwerkt: totalAccounts, accounts_mislukt: failedAccounts })
 
-  // ── Post-sync pipeline ─────────────────────────────────────────────────────
-  // Stap 1: categoriseer alle transacties met category = null
-  await callInternalApi('/api/categorize', request)
-
-  // Stap 2: detecteer vaste lasten + inkomen op basis van transactiehistorie
-  await callInternalApi('/api/recurring/detect', request)
-
-  // Beide zijn non-blocking — als ze falen komt de gebruiker nog steeds op dashboard
-  // De data wordt bij de volgende sync of refresh alsnog correct
-
-  return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/dashboard?connected=true`)
+  // Transacties, categorisatie en recurring detect worden gedaan door de /sync pagina
+  return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/sync`)
 }
