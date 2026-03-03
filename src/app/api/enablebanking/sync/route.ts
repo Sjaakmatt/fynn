@@ -87,37 +87,36 @@ async function fetchTransactionsEB(
   while (page <= MAX_PAGES) {
     const url = buildTxUrl(ebAccountId, baseQuery, continuationKey);
 
-    const data = await ebFetch<EBTransactionsResponse>(url, {
-      method: "GET",
-      headers: getPsuHeaders(request),
-    });
+    let data: EBTransactionsResponse;
+    try {
+      data = await ebFetch<EBTransactionsResponse>(url, {
+        method: "GET",
+        headers: getPsuHeaders(request),
+      });
+    } catch (err: any) {
+      const msg = err?.message ?? "";
+      if (msg.includes("422") || msg.includes("400")) {
+        console.warn(`[EB Sync] ${msg.includes("422") ? "422" : "400"} on page ${page} — stopping pagination, ${all.length} tx fetched`);
+        break;
+      }
+      throw err;
+    }
 
     const txs = data.transactions ?? [];
     all.push(...txs);
-    if (continuationKey) await new Promise(r => setTimeout(r, 300))
 
-    if (data.continuation_key) {
-      try {
-        const decoded = JSON.parse(
-          Buffer.from(data.continuation_key.split('.')[1] ?? data.continuation_key, 'base64').toString()
-        )
-        console.log('[EB Sync] continuation_key decoded:', JSON.stringify(decoded))
-      } catch (err: any) {
-        if (err?.message?.includes("422") || err?.message?.includes("400")) {
-          console.warn(`[EB Sync] ${err.message.includes("422") ? "422" : "400 ASPSP"} op pagina ${page} — stop paginering, ${all.length} tx opgehaald`)
-          break
-        }
-        throw err
-      }
-      console.log('[EB Sync] ebAccountId in request:', ebAccountId)
-    }
+    console.log(
+      `[EB Sync] page ${page} | ${txs.length} tx | total ${all.length} | continuation_key=${data.continuation_key ? "present" : "null"}`
+    );
 
     continuationKey = data.continuation_key ?? null;
-    page++;
-
     if (!continuationKey) break;
+
+    page++;
+    if (page <= MAX_PAGES) await new Promise((r) => setTimeout(r, 300));
   }
 
+  console.log(`[EB Sync] account ${ebAccountId} done — ${all.length} transactions in ${page} pages`);
   return all;
 }
 
