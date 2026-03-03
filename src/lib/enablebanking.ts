@@ -83,26 +83,34 @@ export async function ebFetch<T = any>(
   });
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(
-      `Enable Banking API error ${res.status}: ${text || res.statusText}`
-    );
+    const text = await res.text().catch(() => "")
+    throw new Error(`Enable Banking API error ${res.status}: ${text || res.statusText}`)
   }
 
-  // Handle empty responses
-  if (res.status === 204) return undefined as unknown as T;
+  if (res.status === 204) return undefined as unknown as T
 
-  // Try JSON; fall back to text
-  const contentType = res.headers.get("content-type") || "";
-  if (contentType.includes("application/json")) {
-    return (await res.json()) as T;
+  // Handmatig decomprimeren als gzip
+  const encoding = res.headers.get("content-encoding") ?? ""
+  let body: string
+
+  if (encoding.includes("gzip") || encoding.includes("deflate") || encoding.includes("br")) {
+    const buffer = await res.arrayBuffer()
+    const { gunzipSync, inflateSync, brotliDecompressSync } = await import("zlib")
+    const buf = Buffer.from(buffer)
+    try {
+      body = (encoding.includes("br") ? brotliDecompressSync(buf) : 
+               encoding.includes("deflate") ? inflateSync(buf) : 
+               gunzipSync(buf)).toString("utf-8")
+    } catch {
+      body = await res.text()
+    }
+  } else {
+    body = await res.text()
   }
 
-  const txt = await res.text();
   try {
-    // Some APIs forget content-type but still return JSON
-    return JSON.parse(txt) as T;
+    return JSON.parse(body) as T
   } catch {
-    return txt as unknown as T;
+    return body as unknown as T
   }
 }
