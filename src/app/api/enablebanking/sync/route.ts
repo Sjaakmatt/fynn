@@ -80,9 +80,7 @@ async function fetchTransactionsEB(
 
   do {
     const url: string = continuationKey
-        ? `/accounts/${ebAccountId}/transactions?continuation_key=${encodeURIComponent(
-            continuationKey
-        )}`
+        ? `/accounts/transactions?continuation_key=${encodeURIComponent(continuationKey)}`
         : `/accounts/${ebAccountId}/transactions?${firstQuery}`;
 
     const data: EBTransactionsResponse = await ebFetch<EBTransactionsResponse>(url, {

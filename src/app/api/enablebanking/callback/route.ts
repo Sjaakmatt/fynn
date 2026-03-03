@@ -91,7 +91,7 @@ async function fetchAllTransactions(
     const url: string =
       `/accounts/${encodeURIComponent(accountId)}/transactions?` +
       baseQuery +
-      (continuationKey ? `&continuation_key=${encodeURIComponent(continuationKey)}` : "");
+      (continuationKey ? `&continuation_key=${continuationKey}` : "")
 
     const data: EBTransactionsResponse = await ebFetch<EBTransactionsResponse>(url, {
       method: "GET",
