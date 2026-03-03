@@ -279,8 +279,8 @@ export default function VasteLastenKalender() {
                           <div className="rounded-xl p-3 shadow-lg"
                             style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
                             <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text)' }}>
-                              {item.name}
-                            </p>
+                               {cleanDescription(item.name)}
+                             </p>
                             <p className="text-sm font-bold mb-1" style={{ color: itemColor }}>
                               €{item.amount.toFixed(2)}
                             </p>
