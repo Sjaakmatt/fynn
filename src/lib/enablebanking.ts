@@ -69,10 +69,10 @@ export async function ebFetch<T = any>(
 
   const baseHeaders: Record<string, string> = {
     Authorization: `Bearer ${jwt}`,
-    ...(hasBody ? { "Content-Type": "application/json" } : {}),
-    // Optional but useful
     Accept: "application/json",
-  };
+    "Accept-Encoding": "identity",  // ← geen gzip
+    ...(hasBody ? { "Content-Type": "application/json" } : {}),
+  }
 
   const headers = mergeHeaders(baseHeaders, options.headers);
 
