@@ -94,6 +94,7 @@ async function fetchTransactionsEB(
 
     const txs = data.transactions ?? [];
     all.push(...txs);
+    if (continuationKey) await new Promise(r => setTimeout(r, 300))
 
     if (data.continuation_key) {
       try {
@@ -101,8 +102,12 @@ async function fetchTransactionsEB(
           Buffer.from(data.continuation_key.split('.')[1] ?? data.continuation_key, 'base64').toString()
         )
         console.log('[EB Sync] continuation_key decoded:', JSON.stringify(decoded))
-      } catch {
-        console.log('[EB Sync] continuation_key (raw):', data.continuation_key.slice(0, 100))
+      } catch (err: any) {
+        if (err?.message?.includes("422") || err?.message?.includes("400")) {
+          console.warn(`[EB Sync] ${err.message.includes("422") ? "422" : "400 ASPSP"} op pagina ${page} — stop paginering, ${all.length} tx opgehaald`)
+          break
+        }
+        throw err
       }
       console.log('[EB Sync] ebAccountId in request:', ebAccountId)
     }
