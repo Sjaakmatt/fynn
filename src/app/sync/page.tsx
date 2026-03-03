@@ -215,7 +215,7 @@ function SyncContent() {
                 Fynn analyseert je financiën
               </h1>
               <p style={{ fontSize: '14px', color: '#6b7280', margin: 0 }}>
-                Dit duurt ongeveer 15 seconden
+                Dit duurt een paar minuten
               </p>
             </div>
           )}

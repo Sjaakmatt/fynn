@@ -95,6 +95,18 @@ async function fetchTransactionsEB(
     const txs = data.transactions ?? [];
     all.push(...txs);
 
+    if (data.continuation_key) {
+      try {
+        const decoded = JSON.parse(
+          Buffer.from(data.continuation_key.split('.')[1] ?? data.continuation_key, 'base64').toString()
+        )
+        console.log('[EB Sync] continuation_key decoded:', JSON.stringify(decoded))
+      } catch {
+        console.log('[EB Sync] continuation_key (raw):', data.continuation_key.slice(0, 100))
+      }
+      console.log('[EB Sync] ebAccountId in request:', ebAccountId)
+    }
+
     continuationKey = data.continuation_key ?? null;
     page++;
 
