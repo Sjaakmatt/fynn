@@ -31,6 +31,14 @@ function getPsuHeaders(request: NextRequest): Record<string, string> {
   };
 }
 
+// Belangrijk: continuation_key is ALLEEN geldig samen met exact dezelfde overige parameters.
+// Dus we bouwen de URL altijd als: ?<baseQuery>&continuation_key=<...>
+function buildTxUrl(accountId: string, baseQuery: string, continuationKey: string | null) {
+  const qs = new URLSearchParams(baseQuery);
+  if (continuationKey) qs.set("continuation_key", continuationKey);
+  return `/accounts/${encodeURIComponent(accountId)}/transactions?${qs.toString()}`;
+}
+
 function stableId(input: string): string {
   // deterministic, short, safe for unique indexes
   let h = 2166136261; // FNV-1a 32-bit
@@ -38,15 +46,12 @@ function stableId(input: string): string {
     h ^= input.charCodeAt(i);
     h = Math.imul(h, 16777619);
   }
-  // unsigned
   return (h >>> 0).toString(16).padStart(8, "0");
 }
 
 function toISODate(d?: string | null): string | null {
   if (!d) return null;
-  // EB geeft meestal YYYY-MM-DD; we accepteren dat
   if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
-  // fallback: probeer te parsen
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return null;
   return dt.toISOString().slice(0, 10);
@@ -59,9 +64,10 @@ function asNumberAmount(a?: string | null): number | null {
 }
 
 /**
- * EB: first sync -> strategy=longest
- * incremental -> date_from=YYYY-MM-DD (we nemen maxDate-7d buffer)
- * pagination: continuation_key doorpollen ook bij lege pages
+ * EB paging:
+ * - initial: strategy=longest OR date_from=...
+ * - next pages: MUST keep same baseQuery and add continuation_key
+ * - DO NOT stop on empty page if continuation_key exists (EB can return empty pages)
  */
 async function fetchTransactionsEB(
   ebAccountId: string,
@@ -73,20 +79,17 @@ async function fetchTransactionsEB(
   let page = 1;
   const MAX_PAGES = 800;
 
-  const firstQuery =
+  const baseQuery =
     mode.kind === "longest"
       ? "strategy=longest"
-      : `date_from=${encodeURIComponent(mode.dateFrom)}`;
+      : `date_from=${mode.dateFrom}`;
 
-  do {
-    // HERSTEL naar:
-    const url: string = continuationKey
-      ? `/accounts/${ebAccountId}/transactions?continuation_key=${encodeURIComponent(continuationKey)}`
-      : `/accounts/${ebAccountId}/transactions?${firstQuery}`;
+  while (page <= MAX_PAGES) {
+    const url = buildTxUrl(ebAccountId, baseQuery, continuationKey);
 
-    const data: EBTransactionsResponse = await ebFetch<EBTransactionsResponse>(url, {
-        method: "GET",
-        headers: getPsuHeaders(request),
+    const data = await ebFetch<EBTransactionsResponse>(url, {
+      method: "GET",
+      headers: getPsuHeaders(request),
     });
 
     const txs = data.transactions ?? [];
@@ -94,7 +97,9 @@ async function fetchTransactionsEB(
 
     continuationKey = data.continuation_key ?? null;
     page++;
-  } while (continuationKey && page <= MAX_PAGES);
+
+    if (!continuationKey) break;
+  }
 
   return all;
 }
@@ -110,27 +115,50 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await request.json().catch(() => ({}));
-    const mode = body?.mode === "reset" ? "reset" : "merge";
+  const body = await request.json().catch(() => ({} as any));
+  const mode: "merge" | "reset" | "full_reset" =
+    body?.mode === "full_reset" ? "full_reset" : body?.mode === "reset" ? "reset" : "merge";
 
-    if (mode === "reset") {
-    // delete enablebanking data for this user
-    await supabase.from("transactions")
-        .delete()
-        .eq("user_id", user.id)
-        .eq("provider", "enablebanking");
+  // reset: only purge transactions (keep accounts/session so we can sync right away)
+  if (mode === "reset") {
+    const { error: delErr } = await supabase
+      .from("transactions")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("provider", "enablebanking");
 
-    await supabase.from("bank_accounts")
-        .delete()
-        .eq("user_id", user.id)
-        .eq("provider", "enablebanking");
+    if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
+  }
 
-    await supabase.from("enablebanking_sessions")
-        .delete()
-        .eq("user_id", user.id);
-    }
+  // full_reset: wipe everything and STOP -> user must reconnect
+  if (mode === "full_reset") {
+    const delTx = await supabase
+      .from("transactions")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("provider", "enablebanking");
 
-  // 1) check session exists
+    if (delTx.error) return NextResponse.json({ error: delTx.error.message }, { status: 500 });
+
+    const delAcc = await supabase
+      .from("bank_accounts")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("provider", "enablebanking");
+
+    if (delAcc.error) return NextResponse.json({ error: delAcc.error.message }, { status: 500 });
+
+    const delSess = await supabase
+      .from("enablebanking_sessions")
+      .delete()
+      .eq("user_id", user.id);
+
+    if (delSess.error) return NextResponse.json({ error: delSess.error.message }, { status: 500 });
+
+    return NextResponse.json({ ok: true, mode, message: "Wiped EB data. Reconnect required." });
+  }
+
+  // 1) session must exist (created by callback)
   const { data: sess, error: sessErr } = await supabase
     .from("enablebanking_sessions")
     .select("session_id, valid_until")
@@ -141,7 +169,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No EnableBanking session found" }, { status: 400 });
   }
 
-  // 2) get accounts for this user/provider
+  // 2) accounts must exist (created by callback)
   const { data: accounts, error: accErr } = await supabase
     .from("bank_accounts")
     .select("id, external_id, iban")
@@ -149,6 +177,9 @@ export async function POST(request: NextRequest) {
     .eq("provider", "enablebanking");
 
   if (accErr) return NextResponse.json({ error: accErr.message }, { status: 500 });
+  if (!accounts || accounts.length === 0) {
+    return NextResponse.json({ error: "No EnableBanking accounts found" }, { status: 400 });
+  }
 
   const cutoff24m = cutoffDateISO(24);
 
@@ -156,11 +187,11 @@ export async function POST(request: NextRequest) {
   let processedAccounts = 0;
   let totalFetched = 0;
 
-  for (const acc of accounts ?? []) {
-    const internalAccountId = acc.id as string;
-    const ebAccountId = acc.external_id as string;
+  for (const acc of accounts) {
+    const internalAccountId = String(acc.id);
+    const ebAccountId = String(acc.external_id);
 
-    // 3) determine incremental start: max existing tx date for this account/provider
+    // determine incremental start
     const { data: maxRow, error: maxErr } = await supabase
       .from("transactions")
       .select("transaction_date")
@@ -171,60 +202,48 @@ export async function POST(request: NextRequest) {
       .limit(1)
       .maybeSingle();
 
-    if (maxErr) {
-      return NextResponse.json({ error: maxErr.message }, { status: 500 });
-    }
+    if (maxErr) return NextResponse.json({ error: maxErr.message }, { status: 500 });
 
-    let mode: { kind: "longest" } | { kind: "date_from"; dateFrom: string };
+    let fetchMode: { kind: "longest" } | { kind: "date_from"; dateFrom: string };
 
     if (!maxRow?.transaction_date) {
-      mode = { kind: "longest" };
+      fetchMode = { kind: "longest" };
     } else {
-      // buffer 7 dagen terug
       const maxDate = String(maxRow.transaction_date); // YYYY-MM-DD
       const dt = new Date(`${maxDate}T00:00:00Z`);
       dt.setUTCDate(dt.getUTCDate() - 7);
       const dateFrom = dt.toISOString().slice(0, 10);
-      mode = { kind: "date_from", dateFrom };
+      fetchMode = { kind: "date_from", dateFrom };
     }
 
-    const fetched = await fetchTransactionsEB(ebAccountId, request, mode);
+    const fetched = await fetchTransactionsEB(ebAccountId, request, fetchMode);
     totalFetched += fetched.length;
 
-    // 4) normalize -> upsert
-    const rowsToUpsert: any[] = [];
+    const rowsToUpsert: Array<Record<string, any>> = [];
     const merchantSeeds = new Map<string, { merchant_key: string; merchant_name: string }>();
 
     for (const t of fetched) {
       const booking = toISODate(t.booking_date) ?? toISODate(t.value_date);
       if (!booking) continue;
-
-      // 24m cutoff: voor “longest” backfill knippen we af
       if (booking < cutoff24m) continue;
 
       const amt = asNumberAmount(t.transaction_amount?.amount ?? null);
       if (amt == null) continue;
 
       const currency = t.transaction_amount?.currency ?? "EUR";
-
-      // DBIT = uitgave (negatief), CRDT = inkomen (positief)
       const signedAmount =
         t.credit_debit_indicator === "DBIT" ? -Math.abs(amt) : Math.abs(amt);
 
       const remi = (t.remittance_information ?? []).join(" ").trim();
       const counterparty =
-        (t.credit_debit_indicator === "DBIT"
-          ? t.creditor?.name
-          : t.debtor?.name) ?? "";
+        (t.credit_debit_indicator === "DBIT" ? t.creditor?.name : t.debtor?.name) ?? "";
 
-      const description = [counterparty, remi].filter(Boolean).join(" — ").trim() || "Onbekend";
+      const description =
+        [counterparty, remi].filter(Boolean).join(" — ").trim() || "Onbekend";
 
       const { merchantName, merchantKey } = extractMerchant(description, Math.abs(signedAmount));
 
-      // IMPORTANT: jouw schema heeft unique(external_id) (global).
-      // Dus we maken external_id provider-safe door account te prefixen.
-      // Later: beter is unique(provider, external_id) in DB.
-      const entryRef = t.entry_reference ?? `${booking}:${description}`; // fallback
+      const entryRef = t.entry_reference ?? `${booking}:${description}`;
       const externalId = `eb:${ebAccountId}:${stableId(entryRef)}`;
 
       rowsToUpsert.push({
@@ -236,33 +255,26 @@ export async function POST(request: NextRequest) {
         transaction_date: booking,
         provider: "enablebanking",
         external_id: externalId,
-
         merchant_name: merchantName,
         merchant_key: merchantKey,
       });
 
-      if (merchantKey && merchantName) {
-        if (!merchantSeeds.has(merchantKey)) {
-          merchantSeeds.set(merchantKey, { merchant_key: merchantKey, merchant_name: merchantName });
-        }
+      if (merchantKey && merchantName && !merchantSeeds.has(merchantKey)) {
+        merchantSeeds.set(merchantKey, { merchant_key: merchantKey, merchant_name: merchantName });
       }
     }
 
-    // Upsert in batches
     const BATCH = 500;
     for (let i = 0; i < rowsToUpsert.length; i += BATCH) {
       const batch = rowsToUpsert.slice(i, i + BATCH);
-
       const { error } = await supabase
         .from("transactions")
         .upsert(batch, { onConflict: "external_id" });
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
       insertedOrUpdated += batch.length;
     }
 
-    // Seed merchant_map (global)
     const seeds = Array.from(merchantSeeds.values());
     if (seeds.length > 0) {
       const { error: mmErr } = await supabase
@@ -278,7 +290,6 @@ export async function POST(request: NextRequest) {
           { onConflict: "merchant_key" }
         );
 
-      // non-blocking: sync moet niet falen op map seed
       if (mmErr) console.warn("[merchant_map seed] failed:", mmErr.message);
     }
 
@@ -287,6 +298,7 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     ok: true,
+    mode,
     processedAccounts,
     totalFetched,
     upserted: insertedOrUpdated,
