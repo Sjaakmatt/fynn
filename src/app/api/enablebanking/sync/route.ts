@@ -149,10 +149,19 @@ async function upsertBatch(
   merchantSeeds: Map<string, { merchant_key: string; merchant_name: string }>
 ): Promise<{ upserted: number; error: string | null }> {
   let upserted = 0;
-  const BATCH = 500;
 
-  for (let i = 0; i < rows.length; i += BATCH) {
-    const batch = rows.slice(i, i + BATCH);
+  // Deduplicate by external_id (last occurrence wins)
+  const deduped = new Map<string, Record<string, any>>();
+  for (const row of rows) {
+    deduped.set(row.external_id, row);
+  }
+  const uniqueRows = Array.from(deduped.values());
+
+  console.log(`[Sync] upsertBatch: ${rows.length} rows → ${uniqueRows.length} unique`);
+
+  const BATCH = 500;
+  for (let i = 0; i < uniqueRows.length; i += BATCH) {
+    const batch = uniqueRows.slice(i, i + BATCH);
     const { error } = await supabase
       .from("transactions")
       .upsert(batch, { onConflict: "external_id" });
