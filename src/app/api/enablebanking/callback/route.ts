@@ -317,5 +317,5 @@ export async function GET(request: NextRequest) {
   });
 
   // Transacties, categorisatie en recurring detect worden gedaan door de /sync pagina
-  return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/sync`);
+  return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/sync?provider=enablebanking`)
 }

@@ -64,7 +64,16 @@ function SyncContent() {
       // Stap 1: Transacties ophalen
       setStepStatus('transactions', 'active')
       setCurrentStep(0)
-      const txRes = await fetch('/api/sync/transactions', { method: 'POST' })
+      const provider = searchParams.get('provider')
+
+      const txRes = provider === 'enablebanking'
+        ? await fetch('/api/enablebanking/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'merge' }),
+          })
+        : await fetch('/api/sync/transactions', { method: 'POST' })
+
       if (!txRes.ok) throw new Error('Transacties ophalen mislukt')
       setStepStatus('transactions', 'done')
 
@@ -77,7 +86,8 @@ function SyncContent() {
       // Stap 3: Vaste lasten detecteren
       setStepStatus('recurring', 'active')
       setCurrentStep(2)
-      await fetch('/api/recurring/detect', { method: 'POST' })
+      const recRes = await fetch("/api/sync/recurring", { method: "POST" });
+      if (!recRes.ok) throw new Error("Recurring detect mislukt");
       setStepStatus('recurring', 'done')
 
       // Stap 4: Dashboard klaarzetten (kleine delay voor gevoel van afronding)

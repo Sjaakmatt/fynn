@@ -111,6 +111,26 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const body = await request.json().catch(() => ({}));
+    const mode = body?.mode === "reset" ? "reset" : "merge";
+
+    if (mode === "reset") {
+    // delete enablebanking data for this user
+    await supabase.from("transactions")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("provider", "enablebanking");
+
+    await supabase.from("bank_accounts")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("provider", "enablebanking");
+
+    await supabase.from("enablebanking_sessions")
+        .delete()
+        .eq("user_id", user.id);
+    }
+
   // 1) check session exists
   const { data: sess, error: sessErr } = await supabase
     .from("enablebanking_sessions")

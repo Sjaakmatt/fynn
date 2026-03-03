@@ -221,9 +221,14 @@ export async function GET(request: NextRequest) {
       const global = mapByKey.get(merchantKey);
       const userOv = overrideByKey.get(merchantKey);
 
-      const name = userOv?.category ? group.name : (global?.merchant_name ?? group.name);
+      const isVar = userOv?.is_variable ?? global?.is_variable ?? false;
+      if (isVar) continue;
 
-      const quarterly = Boolean(userOv?.recurring_hint ?? global?.recurring_hint ?? group.quarterlyHint);
+      // user can force recurring
+      const recurring = userOv?.recurring_hint ?? global?.recurring_hint ?? false;
+      const quarterly = recurring ? false : group.quarterlyHint; // keep your old quarterly hint as fallback (we refine later)
+
+      const name = global?.merchant_name ?? group.name;
 
       // Must be recent enough
       const recentCutoff = quarterly ? threeMonthsBeforeLatest : refMonthStart;
@@ -232,10 +237,6 @@ export async function GET(request: NextRequest) {
 
       // Compute score + monthly totals
       const { score, byMonth, medianMonthly } = recurringScore(occ, quarterly);
-
-      // Override logic wins
-      const forcedVariable = userOv?.is_variable ?? global?.is_variable;
-      if (forcedVariable === true) continue;
 
       // Decision threshold
       // monthly: require stronger evidence, quarterly slightly lower
