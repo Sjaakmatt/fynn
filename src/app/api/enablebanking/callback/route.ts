@@ -290,25 +290,6 @@ export async function GET(request: NextRequest) {
     const internalAccountId = savedAccount.id;
     log("Account opgeslagen", { internalId: internalAccountId, iban, name: accountName });
     totalAccounts++;
-
-    // ── OPTIONAL: transacties alvast ophalen en counten (je redirect daarna toch naar /sync)
-    // Als je dit niet wil in callback: verwijder dit blok.
-    try {
-      const tx = await fetchAllTransactions(ebAccountId, request);
-      totalTransactions += tx.length;
-
-      // Als je hier al transacties wilt opslaan, doe dat idempotent (entry_reference unique).
-      // Jij doet het nu via /sync, dus ik laat het bij count/log.
-      log("Transacties opgehaald (callback)", {
-        account: iban,
-        count: tx.length,
-      });
-    } catch (e) {
-      log(`Transacties ophalen mislukt voor ${iban} (non-blocking)`, undefined, e);
-    }
-
-    // (optioneel) interne API triggers
-    // await callInternalApi(`/api/enablebanking/something`, request)
   }
 
   log("Accounts klaar", {
