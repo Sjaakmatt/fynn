@@ -1,3 +1,4 @@
+// src/lib/enablebanking.ts
 import * as jose from "jose";
 
 const APP_ID = process.env.ENABLE_BANKING_APP_ID!;
@@ -24,8 +25,6 @@ export async function makeJWT() {
     .setAudience("api.enablebanking.com")
     .sign(privateKey);
 }
-
-type HeaderValue = string | number | boolean | null | undefined;
 
 function normalizeHeaders(input?: HeadersInit): Record<string, string> {
   if (!input) return {};
@@ -54,7 +53,7 @@ function mergeHeaders(base: Record<string, string>, extra?: HeadersInit) {
  * - Adds Bearer JWT
  * - Only sets Content-Type when a body is present
  * - Lets Node/undici handle decompression automatically
- * - Structured logging for debugging EB integration issues
+ * - Structured logging for debugging
  */
 export async function ebFetch<T = any>(
   path: string,
@@ -66,7 +65,7 @@ export async function ebFetch<T = any>(
   const requestId = Math.random().toString(36).slice(2, 8);
   const startTime = Date.now();
 
-  console.log(`[EB ${requestId}] → ${method} ${path}`);
+  console.log(`[EB ${requestId}] → ${method} ${path.slice(0, 120)}`);
 
   const baseHeaders: Record<string, string> = {
     Authorization: `Bearer ${jwt}`,
@@ -84,8 +83,13 @@ export async function ebFetch<T = any>(
       headers,
     });
   } catch (err: any) {
-    console.error(`[EB ${requestId}] ✗ Network error after ${Date.now() - startTime}ms:`, err.message);
-    throw new Error(`Enable Banking network error on ${method} ${path}: ${err.message}`);
+    console.error(
+      `[EB ${requestId}] ✗ Network error after ${Date.now() - startTime}ms:`,
+      err.message
+    );
+    throw new Error(
+      `Enable Banking network error on ${method} ${path}: ${err.message}`
+    );
   }
 
   const duration = Date.now() - startTime;
@@ -115,14 +119,12 @@ export async function ebFetch<T = any>(
 
   const text = await res.text();
 
-  console.log(
-    `[EB ${requestId}] ✓ Body received: ${text.length} chars`
-  );
+  console.log(`[EB ${requestId}] ✓ Body: ${text.length} chars`);
 
   try {
     const parsed = JSON.parse(text) as T;
 
-    // Log nuttige metadata als het een transactions response is
+    // Log transaction metadata when present
     if (typeof parsed === "object" && parsed !== null) {
       const obj = parsed as Record<string, any>;
       if (Array.isArray(obj.transactions)) {
