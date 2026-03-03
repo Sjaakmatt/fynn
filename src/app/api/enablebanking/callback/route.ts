@@ -85,12 +85,13 @@ async function fetchAllTransactions(
 
   const firstQuery = "strategy=longest";
 
+  const baseQuery = firstQuery; // "strategy=longest"
+
   do {
-    const url: string = continuationKey
-      ? `/accounts/${accountId}/transactions?continuation_key=${encodeURIComponent(
-          continuationKey
-        )}`
-      : `/accounts/${accountId}/transactions?${firstQuery}`;
+    const url: string =
+      `/accounts/${encodeURIComponent(accountId)}/transactions?` +
+      baseQuery +
+      (continuationKey ? `&continuation_key=${encodeURIComponent(continuationKey)}` : "");
 
     const data: EBTransactionsResponse = await ebFetch<EBTransactionsResponse>(url, {
       method: "GET",
