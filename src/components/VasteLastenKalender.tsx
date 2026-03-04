@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { cleanDescription } from '@/lib/clean-description'
 
 interface CalendarItem {
   name: string
@@ -12,6 +11,8 @@ interface CalendarItem {
   daysUntil: number
   isPast: boolean
   warning: boolean
+  merchantKey: string
+  score: number
 }
 
 function daysLabel(days: number): string {
@@ -180,7 +181,7 @@ export default function VasteLastenKalender() {
                   </div>
                   <div>
                     <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
-                     {cleanDescription(item.name)}
+                     {item.name}
                      </p>
                     <p className="text-xs" style={{ color: itemColor }}>
                       {item.isPast
@@ -279,7 +280,7 @@ export default function VasteLastenKalender() {
                           <div className="rounded-xl p-3 shadow-lg"
                             style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
                             <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text)' }}>
-                               {cleanDescription(item.name)}
+                               {item.name}
                              </p>
                             <p className="text-sm font-bold mb-1" style={{ color: itemColor }}>
                               €{item.amount.toFixed(2)}

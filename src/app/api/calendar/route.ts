@@ -241,7 +241,7 @@ export async function GET(request: NextRequest) {
       // Decision threshold
       // monthly: require stronger evidence, quarterly slightly lower
       const threshold = quarterly ? 0.55 : 0.65;
-      if (score < threshold) continue;
+      if (score < threshold && !recurring) continue;
 
       // Amount: ref month total if present else median monthly
       const amount = Math.round(((byMonth[refMonthKey] ?? medianMonthly) || 0) * 100) / 100;
