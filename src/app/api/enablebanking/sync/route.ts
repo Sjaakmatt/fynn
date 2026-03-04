@@ -407,6 +407,29 @@ export async function POST(request: NextRequest) {
   const duration = Date.now() - startTime;
   console.log(`[Sync] Done in ${duration}ms | ${totalFetched} fetched | ${totalUpserted} upserted | complete=${allComplete}`);
 
+  // ── Auto-postprocess: categorize + recurring detect ───────────────────────
+  if (allComplete && totalUpserted > 0) {
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+      const headers = {
+        "Content-Type": "application/json",
+        Cookie: request.headers.get("cookie") ?? "",
+      }
+
+      const [catRes, recRes] = await Promise.all([
+        fetch(`${baseUrl}/api/categorize`, { method: "POST", headers }),
+        fetch(`${baseUrl}/api/recurring/detect`, { method: "POST", headers }),
+      ])
+
+      const catData = await catRes.json().catch(() => ({}))
+      const recData = await recRes.json().catch(() => ({}))
+
+      console.log(`[Sync] Categorize: ${catData.categorized ?? 0} tx | Recurring: ${recData.updated ?? 0} merchants`)
+    } catch (e) {
+      console.warn("[Sync] Post-processing mislukt (non-blocking):", e)
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     mode,

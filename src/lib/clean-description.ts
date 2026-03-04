@@ -233,6 +233,13 @@ function applyKnownAliases(base: string): string {
     [/\bkpn\b/g, "kpn"],
     [/\bnetflix\b/g, "netflix"],
     [/\bspotify\b/g, "spotify"],
+    [/\bmicrosoft\b|\bmsft\b/g, "microsoft"],
+    [/\bapple\.com\b|\bapple services\b/g, "apple"],
+    [/\bgoogle\b/g, "google"],
+    [/\bklarna\b/g, "klarna"],
+    [/\bpaypal\b/g, "paypal"],
+    [/\buber\b/g, "uber"],
+    [/\bdeliveroo\b/g, "deliveroo"],
   ];
 
   let s = base;
