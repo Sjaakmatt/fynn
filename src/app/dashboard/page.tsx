@@ -128,10 +128,13 @@ export default async function DashboardPage() {
       .toISOString().split('T')[0]
 
     const [{ data: merchantMap }, { data: overrides }, { data: recentTx }] = await Promise.all([
-      supabase.from('merchant_map').select('merchant_key, merchant_name').eq('recurring_hint', true).neq('is_variable', true),
+      supabase.from('merchant_map').select('merchant_key, merchant_name').eq('recurring_hint', true).or('is_variable.is.null,is_variable.eq.false'),
       supabase.from('merchant_user_overrides').select('merchant_key, is_variable').eq('user_id', user.id),
       supabase.from('transactions').select('merchant_key, merchant_name, amount, transaction_date').eq('user_id', user.id).lt('amount', 0).gte('transaction_date', threeMonthsAgo),
     ])
+
+    console.log('[Dashboard] merchantMap:', merchantMap?.length, 'recentTx:', recentTx?.length)
+    console.log('[Dashboard] sample:', merchantMap?.slice(0, 2))
 
     const variableKeys = new Set((overrides ?? []).filter(o => o.is_variable).map(o => o.merchant_key))
     const recurringKeys = new Set((merchantMap ?? []).map(m => m.merchant_key))
@@ -162,7 +165,12 @@ export default async function DashboardPage() {
   }
 
   // ─── Decision Engine ─────────────────────────────────────────────
+  console.log('[Dashboard] calendarItems:', calendarItems.length, calendarItems.map(i => `${i.name} €${i.amount} dag${i.dayOfMonth} isPast:${i.isPast}`))
+
   const engine = runDecisionEngine(totalBalance, calendarItems, todayDay)
+
+  console.log('[Dashboard] engine:', engine)
+  console.log('[Dashboard] totalBalance:', totalBalance)
 
   // ─── Analyse: meest recente maand met data ────────────────────────
   let analyseStart = startOfMonth

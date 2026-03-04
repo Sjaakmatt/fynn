@@ -70,7 +70,7 @@ export default function DashboardShell({
     }
   }, [searchParams, router])
 
-  const firstName = user.email?.split('@')[0] ?? 'daar'
+  const firstName = user.firstName ?? user.email?.split('@')[0] ?? 'daar'
   const hasData = accounts.length > 0
 
   return (

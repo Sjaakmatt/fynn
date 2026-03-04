@@ -4,8 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 type TxRow = {
   merchant_key: string | null;
   merchant_name: string | null;
-  amount: string | number | null; // signed
-  transaction_date: string | null; // YYYY-MM-DD
+  amount: string | number | null;
+  transaction_date: string | null;
 };
 
 type OverrideRow = {
@@ -17,10 +17,10 @@ type OverrideRow = {
 type Candidate = {
   merchant_key: string;
   merchant_name: string;
-  score: number; // 0..1
+  score: number;
   cadence: "monthly" | "4w" | "quarterly" | "unknown";
-  typical_amount: number; // abs
-  typical_day: number; // 1..31
+  typical_amount: number;
+  typical_day: number;
   forced?: "user_recurring" | "user_not_recurring" | "user_variable";
 };
 
@@ -58,9 +58,9 @@ function cadenceFromIntervals(intervals: number[]) {
     return clamp01(0.7 * within + 0.3 * distScore);
   };
 
-  const monthly = fitTo(30, 5); // 25..35
-  const fourW = fitTo(28, 3); // 25..31
-  const quarterly = fitTo(91, 10); // 81..101
+  const monthly = fitTo(30, 5);
+  const fourW = fitTo(28, 3);
+  const quarterly = fitTo(91, 10);
 
   const best = Math.max(monthly, fourW, quarterly);
   if (best === monthly) return { cadence: "monthly" as const, fit: monthly };
@@ -111,10 +111,10 @@ export async function POST(_req: NextRequest) {
 
   const txs = (data ?? []) as TxRow[];
   if (txs.length === 0) {
-    return NextResponse.json({ success: true, candidates: [], updated: 0 });
+    return NextResponse.json({ success: true, candidates: [], updated: 0, deactivated: 0 });
   }
 
-  // 2) Load user overrides (these WIN)
+  // 2) Load user overrides
   const { data: ovr, error: ovrErr } = await supabase
     .from("merchant_user_overrides")
     .select("merchant_key, is_variable, recurring_hint")
@@ -140,10 +140,7 @@ export async function POST(_req: NextRequest) {
 
     const ov = ovByKey.get(k);
 
-    // USER OVERRIDE: variable => never recurring
-    if (ov?.is_variable === true) {
-      continue;
-    }
+    if (ov?.is_variable === true) continue;
 
     const dates = rows
       .map((r) => r.transaction_date)
@@ -154,7 +151,7 @@ export async function POST(_req: NextRequest) {
     const amountsAbs = rows.map((r) => Math.abs(num(r.amount)));
     const days = dates.map((d) => Number(d.slice(8, 10))).filter((x) => x >= 1 && x <= 31);
 
-    // USER OVERRIDE: force recurring
+    // User override: force recurring
     if (ov?.recurring_hint === true) {
       candidates.push({
         merchant_key: k,
@@ -168,12 +165,10 @@ export async function POST(_req: NextRequest) {
       continue;
     }
 
-    // USER OVERRIDE: force NOT recurring (optional behavior)
-    if (ov?.recurring_hint === false) {
-      continue;
-    }
+    // User override: force NOT recurring
+    if (ov?.recurring_hint === false) continue;
 
-    // intervals
+    // Intervals
     const intervals: number[] = [];
     for (let i = 1; i < dates.length; i++) {
       const d = daysBetween(dates[i - 1], dates[i]);
@@ -218,11 +213,61 @@ export async function POST(_req: NextRequest) {
     updated = upserts.length;
   }
 
+  // 5) Deactiveer merchants die >60 dagen niet meer gezien zijn (batch versie)
+  const activeKeys = new Set(candidates.map(c => c.merchant_key))
+
+  const { data: currentRecurring } = await supabase
+    .from("merchant_map")
+    .select("merchant_key")
+    .eq("recurring_hint", true)
+
+  const inactiveKeys = (currentRecurring ?? [])
+    .map(r => r.merchant_key)
+    .filter(k => !activeKeys.has(k))
+
+  const toDeactivate: string[] = []
+
+  if (inactiveKeys.length > 0) {
+    // Batch: haal last_seen per merchant op in één query
+    const { data: lastSeenRows } = await supabase
+      .from("transactions")
+      .select("merchant_key, transaction_date")
+      .eq("user_id", user.id)
+      .in("merchant_key", inactiveKeys)
+      .order("transaction_date", { ascending: false })
+
+    // Pak per merchant_key de meest recente datum
+    const lastSeenByKey = new Map<string, string>()
+    for (const row of (lastSeenRows ?? [])) {
+      if (!lastSeenByKey.has(row.merchant_key)) {
+        lastSeenByKey.set(row.merchant_key, row.transaction_date)
+      }
+    }
+
+    const cutoff = now.toISOString().slice(0, 10)
+    for (const k of inactiveKeys) {
+      const last = lastSeenByKey.get(k)
+      if (!last || daysBetween(last, cutoff) > 60) {
+        toDeactivate.push(k)
+      }
+    }
+  }
+
+  if (toDeactivate.length > 0) {
+    await supabase
+      .from("merchant_map")
+      .update({ recurring_hint: false, updated_at: new Date().toISOString() })
+      .in("merchant_key", toDeactivate)
+
+    console.log(`[Recurring] Gedeactiveerd (>60d niet gezien):`, toDeactivate)
+  }
+
   candidates.sort((a, b) => b.score - a.score);
 
   return NextResponse.json({
     success: true,
     candidates,
     updated,
+    deactivated: toDeactivate.length,
   });
 }
