@@ -27,7 +27,7 @@ const CATEGORY_ICONS: Record<string, string> = {
 }
 
 interface Props {
-  user: { id: string; email?: string }
+  user: { id: string; email?: string; firstName?: string }
   accounts: { id: string; account_name: string; iban: string; balance?: number | null; account_type?: string }[]
   stats: {
     beschikbaar: number

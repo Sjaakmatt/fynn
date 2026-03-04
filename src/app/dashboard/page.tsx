@@ -3,58 +3,60 @@ import { redirect } from 'next/navigation'
 import DashboardShell from '@/components/DashboardShell'
 import { Suspense } from 'react'
 
-// ─── DECISION ENGINE ─────────────────────────────────────────────────────────
-// Vrij te besteden = huidig saldo + nog te ontvangen inkomen − nog te betalen vaste lasten
-// Checkt per recurring item of het al voorgekomen is in transacties van deze maand
+// ─── DECISION ENGINE ──────────────────────────────────────────────────────────
+// Gebruikt calendar items (merchant_map gebaseerd) ipv recurring_items tabel
+// Vrij te besteden = saldo − nog te betalen vaste lasten deze maand
 
-interface RecurringItem {
-  description: string
-  amount: number       // positief = inkomen, negatief = uitgave
-  category: string
-  day_of_month: number
-  confidence: number
-}
-
-interface DecisionResult {
-  vrijTeBesteden: number
-  nogTeBetalen: number
-  nogTeOntvangen: number
-  reedsBetaald: number
-  reedsBinnengekomen: number
+interface CalendarItem {
+  name: string
+  amount: number
+  thisMonthDate: string
+  dayOfMonth: number
+  daysUntil: number
+  isPast: boolean
+  merchantKey: string
 }
 
 function runDecisionEngine(
   totalBalance: number,
-  recurring: RecurringItem[],
-  thisMonthTx: { amount: number }[],
+  calendarItems: CalendarItem[],
   todayDay: number,
-): DecisionResult {
+): {
+  vrijTeBesteden: number
+  nogTeBetalen: number
+  reedsBetaald: number
+} {
+  // Vaste lasten die al betaald zijn deze maand (isPast = true of daysUntil < 0)
+  const reedsBetaald = calendarItems
+    .filter(i => i.isPast)
+    .reduce((s, i) => s + i.amount, 0)
 
-  const paidAmounts = new Set<string>()
-  for (const tx of thisMonthTx) {
-    if (tx.amount < 0) paidAmounts.add(Math.abs(tx.amount).toFixed(2))
-  }
-
-  const expenses = recurring.filter(r => r.amount < 0)
-
-  // Alleen vaste lasten die nog NIET betaald zijn én nog komen
-  const pendingExpenses = expenses.filter(r => {
-    const alreadyPaid = paidAmounts.has(Math.abs(r.amount).toFixed(2))
-    return !alreadyPaid && r.day_of_month >= todayDay
-  })
-
-  const nogTeBetalen = pendingExpenses.reduce((s, r) => s + Math.abs(r.amount), 0)
-  const reedsBetaald = expenses
-    .filter(r => paidAmounts.has(Math.abs(r.amount).toFixed(2)))
-    .reduce((s, r) => s + Math.abs(r.amount), 0)
+  // Vaste lasten die nog komen
+  const nogTeBetalen = calendarItems
+    .filter(i => !i.isPast)
+    .reduce((s, i) => s + i.amount, 0)
 
   return {
     vrijTeBesteden: Math.max(0, totalBalance - nogTeBetalen),
     nogTeBetalen,
-    nogTeOntvangen: 0,   // niet meer relevant voor hoofdberekening
     reedsBetaald,
-    reedsBinnengekomen: 0,
   }
+}
+
+// ─── Naam uit email ───────────────────────────────────────────────────────────
+function parseFirstName(fullName: string | null, email: string | undefined): string {
+  if (fullName) return fullName.split(' ')[0]
+  if (!email) return 'daar'
+  const local = email.split('@')[0]
+  // "sjaakterveld" → probeer bekende patronen
+  // "sjaak.terveld" → "Sjaak"
+  // "sjaak_terveld" → "Sjaak"
+  const parts = local.split(/[._\-+]/)
+  if (parts.length > 1) {
+    return parts[0].charAt(0).toUpperCase() + parts[0].slice(1)
+  }
+  // Geen scheidingsteken — geef gewoon de lokale naam terug met hoofdletter
+  return local.charAt(0).toUpperCase() + local.slice(1)
 }
 
 // ─── PAGE ─────────────────────────────────────────────────────────────────────
@@ -67,7 +69,6 @@ export default async function DashboardPage() {
   const today = new Date()
   const todayDay = today.getDate()
 
-  // Huidige maand
   const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
     .toISOString().split('T')[0]
   const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0)
@@ -77,7 +78,6 @@ export default async function DashboardPage() {
   const [
     { data: accounts },
     { data: thisMonthTx },
-    { data: allRecurring },
     { data: briefing },
     { data: profile },
     { data: latestTx },
@@ -95,11 +95,6 @@ export default async function DashboardPage() {
       .lte('transaction_date', endOfMonth),
 
     supabase
-      .from('recurring_items')
-      .select('description, amount, category, day_of_month, confidence')
-      .eq('user_id', user.id),
-
-    supabase
       .from('briefings')
       .select('*')
       .eq('user_id', user.id)
@@ -107,7 +102,7 @@ export default async function DashboardPage() {
 
     supabase
       .from('profiles')
-      .select('subscription_status, trial_ends_at')
+      .select('subscription_status, trial_ends_at, full_name')
       .eq('id', user.id)
       .single(),
 
@@ -120,28 +115,56 @@ export default async function DashboardPage() {
       .single(),
   ])
 
-  // ─── Decision Engine ─────────────────────────────────────────────
-  // Gebruik alleen betaalrekening(en) voor saldo — niet spaarrekeningen
+  // ─── Saldo (alleen betaalrekeningen) ─────────────────────────────
   const totalBalance = (accounts ?? [])
     .filter(a => a.account_type !== 'SAVINGS')
     .reduce((s, a) => s + (Number(a.balance) || 0), 0)
 
-  const recurringItems: RecurringItem[] = (allRecurring ?? []).map(r => ({
-    description: r.description,
-    amount: parseFloat(r.amount),
-    category: r.category ?? 'overig',
-    day_of_month: r.day_of_month ?? 1,
-    confidence: parseFloat(r.confidence ?? '0.7'),
-  }))
+  // ─── Calendar items ophalen voor Decision Engine ──────────────────
+  // Gebruik de calendar API intern — zelfde logica als de kalender tab
+  let calendarItems: CalendarItem[] = []
+  try {
+    const threeMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 3, 1)
+      .toISOString().split('T')[0]
 
-  const txForEngine = (thisMonthTx ?? []).map(tx => ({
-    amount: parseFloat(tx.amount),
-  }))
+    const [{ data: merchantMap }, { data: overrides }, { data: recentTx }] = await Promise.all([
+      supabase.from('merchant_map').select('merchant_key, merchant_name').eq('recurring_hint', true).neq('is_variable', true),
+      supabase.from('merchant_user_overrides').select('merchant_key, is_variable').eq('user_id', user.id),
+      supabase.from('transactions').select('merchant_key, merchant_name, amount, transaction_date').eq('user_id', user.id).lt('amount', 0).gte('transaction_date', threeMonthsAgo),
+    ])
 
-  const engine = runDecisionEngine(totalBalance, recurringItems, txForEngine, todayDay)
+    const variableKeys = new Set((overrides ?? []).filter(o => o.is_variable).map(o => o.merchant_key))
+    const recurringKeys = new Set((merchantMap ?? []).map(m => m.merchant_key))
+    const merchantGroups = new Map<string, { amounts: number[]; days: number[]; name: string }>()
 
-  // ─── Analyse tab — gebruik meest recente maand met data ──────────
-  // Als er geen data is deze maand (historische import), pak dan de laatste maand met data
+    for (const tx of recentTx ?? []) {
+      if (!tx.merchant_key) continue
+      if (variableKeys.has(tx.merchant_key)) continue
+      if (!recurringKeys.has(tx.merchant_key)) continue
+      if (!merchantGroups.has(tx.merchant_key)) {
+        const mapEntry = (merchantMap ?? []).find(m => m.merchant_key === tx.merchant_key)
+        merchantGroups.set(tx.merchant_key, { amounts: [], days: [], name: mapEntry?.merchant_name ?? tx.merchant_name ?? tx.merchant_key })
+      }
+      merchantGroups.get(tx.merchant_key)!.amounts.push(Math.abs(Number(tx.amount)))
+      merchantGroups.get(tx.merchant_key)!.days.push(new Date(tx.transaction_date).getDate())
+    }
+
+    calendarItems = Array.from(merchantGroups.entries()).map(([key, g]) => {
+      const sorted = [...g.amounts].sort((a, b) => a - b)
+      const amount = sorted[Math.floor(sorted.length / 2)]
+      const sortedDays = [...g.days].sort((a, b) => a - b)
+      const dom = sortedDays[Math.floor(sortedDays.length / 2)]
+      const daysUntil = dom - todayDay
+      return { name: g.name, amount, thisMonthDate: '', dayOfMonth: dom, daysUntil, isPast: daysUntil < 0, merchantKey: key }
+    })
+  } catch (e) {
+    console.warn('[Dashboard] Calendar items mislukt:', e)
+  }
+
+  // ─── Decision Engine ─────────────────────────────────────────────
+  const engine = runDecisionEngine(totalBalance, calendarItems, todayDay)
+
+  // ─── Analyse: meest recente maand met data ────────────────────────
   let analyseStart = startOfMonth
   let analyseEnd = endOfMonth
   let isHistoricData = false
@@ -163,7 +186,6 @@ export default async function DashboardPage() {
     }
   }
 
-  // Haal analyse transacties op (andere maand als historische data)
   const { data: analyseTx } = isHistoricData
     ? await supabase
         .from('transactions')
@@ -173,7 +195,7 @@ export default async function DashboardPage() {
         .lte('transaction_date', analyseEnd)
     : { data: thisMonthTx }
 
-  // ─── Categorie stats voor Analyse tab ────────────────────────────
+  // ─── Categorie stats ──────────────────────────────────────────────
   const byCategory: Record<string, { total: number; count: number }> = {}
   let totalUitgaven = 0
   let totalInkomen = 0
@@ -206,20 +228,20 @@ export default async function DashboardPage() {
     profile?.subscription_status === 'active' ||
     profile?.subscription_status === 'trialing'
 
+  // ─── Naam ─────────────────────────────────────────────────────────
+  const firstName = parseFirstName(profile?.full_name ?? null, user.email)
+
   return (
     <Suspense fallback={null}>
       <DashboardShell
-        user={{ id: user.id, email: user.email }}
+        user={{ id: user.id, email: user.email, firstName }}
         accounts={accounts ?? []}
         stats={{
-          // Decision Engine — wat telt op de overzicht tab
           beschikbaar: engine.vrijTeBesteden,
           nogTeBetalen: engine.nogTeBetalen,
-          nogTeOntvangen: engine.nogTeOntvangen,
+          nogTeOntvangen: 0,
           reedsBetaald: engine.reedsBetaald,
           totalBalance,
-
-          // Analyse tab stats
           totalUitgaven,
           totalInkomen,
           totalGespaard,
