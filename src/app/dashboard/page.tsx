@@ -3,10 +3,6 @@ import { redirect } from 'next/navigation'
 import DashboardShell from '@/components/DashboardShell'
 import { Suspense } from 'react'
 
-// ─── DECISION ENGINE ──────────────────────────────────────────────────────────
-// Gebruikt calendar items (merchant_map gebaseerd) ipv recurring_items tabel
-// Vrij te besteden = saldo − nog te betalen vaste lasten deze maand
-
 interface CalendarItem {
   name: string
   amount: number
@@ -17,49 +13,56 @@ interface CalendarItem {
   merchantKey: string
 }
 
+const VARIABLE_BUDGET_CATEGORIES = ['boodschappen', 'transport']
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0
+  const v = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(v.length / 2)
+  return v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2
+}
+
 function runDecisionEngine(
   totalBalance: number,
   calendarItems: CalendarItem[],
   todayDay: number,
+  nextSalaryDay: number = 25,
+  variableBudgetReservering: number = 0,
 ): {
   vrijTeBesteden: number
   nogTeBetalen: number
   reedsBetaald: number
+  variabelReservering: number
 } {
-  // Vaste lasten die al betaald zijn deze maand (isPast = true of daysUntil < 0)
   const reedsBetaald = calendarItems
     .filter(i => i.isPast)
     .reduce((s, i) => s + i.amount, 0)
 
-  // Vaste lasten die nog komen
+  // Alleen vaste lasten vóór eerste salarisdatum
   const nogTeBetalen = calendarItems
-    .filter(i => !i.isPast)
+    .filter(i => !i.isPast && i.dayOfMonth < nextSalaryDay)
     .reduce((s, i) => s + i.amount, 0)
 
+  const totaalReservering = nogTeBetalen + variableBudgetReservering
+
   return {
-    vrijTeBesteden: Math.max(0, totalBalance - nogTeBetalen),
+    vrijTeBesteden: totalBalance - totaalReservering,
     nogTeBetalen,
     reedsBetaald,
+    variabelReservering: variableBudgetReservering,
   }
 }
 
-// ─── Naam uit email ───────────────────────────────────────────────────────────
 function parseFirstName(fullName: string | null, email: string | undefined): string {
   if (fullName) return fullName.split(' ')[0]
   if (!email) return 'daar'
   const local = email.split('@')[0]
-  // "sjaakterveld" → probeer bekende patronen
-  // "sjaak.terveld" → "Sjaak"
-  // "sjaak_terveld" → "Sjaak"
   const parts = local.split(/[._\-+]/)
   if (parts.length > 1) {
     return parts[0].charAt(0).toUpperCase() + parts[0].slice(1)
   }
-  // Geen scheidingsteken — geef gewoon de lokale naam terug met hoofdletter
   return local.charAt(0).toUpperCase() + local.slice(1)
 }
-
-// ─── PAGE ─────────────────────────────────────────────────────────────────────
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -73,8 +76,9 @@ export default async function DashboardPage() {
     .toISOString().split('T')[0]
   const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0)
     .toISOString().split('T')[0]
+  const sixMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 6, 1)
+    .toISOString().split('T')[0]
 
-  // ─── Data ophalen (parallel) ─────────────────────────────────────
   const [
     { data: accounts },
     { data: thisMonthTx },
@@ -115,13 +119,11 @@ export default async function DashboardPage() {
       .single(),
   ])
 
-  // ─── Saldo (alleen betaalrekeningen) ─────────────────────────────
   const totalBalance = (accounts ?? [])
     .filter(a => a.account_type !== 'SAVINGS')
     .reduce((s, a) => s + (Number(a.balance) || 0), 0)
 
-  // ─── Calendar items ophalen voor Decision Engine ──────────────────
-  // Gebruik de calendar API intern — zelfde logica als de kalender tab
+  // ── Calendar items ────────────────────────────────────────────────
   let calendarItems: CalendarItem[] = []
   try {
     const threeMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 3, 1)
@@ -132,9 +134,6 @@ export default async function DashboardPage() {
       supabase.from('merchant_user_overrides').select('merchant_key, is_variable').eq('user_id', user.id),
       supabase.from('transactions').select('merchant_key, merchant_name, amount, transaction_date').eq('user_id', user.id).lt('amount', 0).gte('transaction_date', threeMonthsAgo),
     ])
-
-    console.log('[Dashboard] merchantMap:', merchantMap?.length, 'recentTx:', recentTx?.length)
-    console.log('[Dashboard] sample:', merchantMap?.slice(0, 2))
 
     const variableKeys = new Set((overrides ?? []).filter(o => o.is_variable).map(o => o.merchant_key))
     const recurringKeys = new Set((merchantMap ?? []).map(m => m.merchant_key))
@@ -164,15 +163,102 @@ export default async function DashboardPage() {
     console.warn('[Dashboard] Calendar items mislukt:', e)
   }
 
-  // ─── Decision Engine ─────────────────────────────────────────────
-  console.log('[Dashboard] calendarItems:', calendarItems.length, calendarItems.map(i => `${i.name} €${i.amount} dag${i.dayOfMonth} isPast:${i.isPast}`))
+  // ── Inkomen detectie ──────────────────────────────────────────────
+  let nextSalaryDay = 25
+  try {
+    const { data: incomeMap } = await supabase
+      .from('merchant_map')
+      .select('merchant_key')
+      .eq('income_hint', true)
+      .or('is_variable.is.null,is_variable.eq.false')
 
-  const engine = runDecisionEngine(totalBalance, calendarItems, todayDay)
+    const { data: incomeTx } = await supabase
+      .from('transactions')
+      .select('merchant_key, transaction_date')
+      .eq('user_id', user.id)
+      .gt('amount', 0)
+      .gte('transaction_date', new Date(today.getFullYear(), today.getMonth() - 3, 1).toISOString().slice(0, 10))
+      .in('merchant_key', (incomeMap ?? []).map(i => i.merchant_key))
 
-  console.log('[Dashboard] engine:', engine)
-  console.log('[Dashboard] totalBalance:', totalBalance)
+    const incomeGroups = new Map<string, number[]>()
+    for (const tx of incomeTx ?? []) {
+      if (!incomeGroups.has(tx.merchant_key)) incomeGroups.set(tx.merchant_key, [])
+      incomeGroups.get(tx.merchant_key)!.push(new Date(tx.transaction_date).getDate())
+    }
 
-  // ─── Analyse: meest recente maand met data ────────────────────────
+    const incomeDays = Array.from(incomeGroups.values()).map(days => {
+      const sorted = [...days].sort((a, b) => a - b)
+      return sorted[Math.floor(sorted.length / 2)]
+    })
+
+    if (incomeDays.length > 0) nextSalaryDay = Math.min(...incomeDays)
+  } catch (e) {
+    console.warn('[Dashboard] Inkomen detectie mislukt:', e)
+  }
+
+  // ── Variabele budget reservering ──────────────────────────────────
+  let variableBudgetReservering = 0
+  const variabelPerCategorie: Record<string, { budget: number; gespendeerd: number; resterend: number }> = {}
+  try {
+    // Historische data: 6 maanden terug, gesplitst per maand per categorie
+    const { data: historicTx } = await supabase
+      .from('transactions')
+      .select('amount, category, transaction_date')
+      .eq('user_id', user.id)
+      .lt('amount', 0)
+      .gte('transaction_date', sixMonthsAgo)
+      .lt('transaction_date', startOfMonth) // exclusief huidige maand
+      .in('category', VARIABLE_BUDGET_CATEGORIES)
+
+    // Groepeer per maand per categorie
+    const maandTotalen: Record<string, Record<string, number>> = {}
+    for (const tx of historicTx ?? []) {
+      const maand = tx.transaction_date.slice(0, 7) // "2025-10"
+      const cat = tx.category ?? 'overig'
+      if (!maandTotalen[maand]) maandTotalen[maand] = {}
+      if (!maandTotalen[maand][cat]) maandTotalen[maand][cat] = 0
+      maandTotalen[maand][cat] += Math.abs(Number(tx.amount))
+    }
+
+    // Mediaan per categorie over beschikbare maanden
+    for (const cat of VARIABLE_BUDGET_CATEGORIES) {
+      const maandBedragen = Object.values(maandTotalen)
+        .map(m => m[cat] ?? 0)
+        .filter(v => v > 0)
+
+      if (maandBedragen.length === 0) continue
+
+      const budgetMediaan = Math.round(median(maandBedragen))
+
+      // Al gespendeerd deze maand in deze categorie
+      const alGespendeerd = (thisMonthTx ?? [])
+        .filter(tx => tx.category === cat && Number(tx.amount) < 0)
+        .reduce((s, tx) => s + Math.abs(Number(tx.amount)), 0)
+
+      const resterend = Math.max(0, budgetMediaan - alGespendeerd)
+
+      variabelPerCategorie[cat] = {
+        budget: budgetMediaan,
+        gespendeerd: Math.round(alGespendeerd),
+        resterend: Math.round(resterend),
+      }
+
+      variableBudgetReservering += resterend
+    }
+  } catch (e) {
+    console.warn('[Dashboard] Variabel budget mislukt:', e)
+  }
+
+  // ── Decision Engine ───────────────────────────────────────────────
+  const engine = runDecisionEngine(
+    totalBalance,
+    calendarItems,
+    todayDay,
+    nextSalaryDay,
+    Math.round(variableBudgetReservering),
+  )
+
+  // ── Analyse: meest recente maand met data ─────────────────────────
   let analyseStart = startOfMonth
   let analyseEnd = endOfMonth
   let isHistoricData = false
@@ -203,7 +289,7 @@ export default async function DashboardPage() {
         .lte('transaction_date', analyseEnd)
     : { data: thisMonthTx }
 
-  // ─── Categorie stats ──────────────────────────────────────────────
+  // ── Categorie stats ───────────────────────────────────────────────
   const byCategory: Record<string, { total: number; count: number }> = {}
   let totalUitgaven = 0
   let totalInkomen = 0
@@ -236,7 +322,6 @@ export default async function DashboardPage() {
     profile?.subscription_status === 'active' ||
     profile?.subscription_status === 'trialing'
 
-  // ─── Naam ─────────────────────────────────────────────────────────
   const firstName = parseFirstName(profile?.full_name ?? null, user.email)
 
   return (
@@ -249,12 +334,14 @@ export default async function DashboardPage() {
           nogTeBetalen: engine.nogTeBetalen,
           nogTeOntvangen: 0,
           reedsBetaald: engine.reedsBetaald,
+          variabelReservering: engine.variabelReservering,
           totalBalance,
           totalUitgaven,
           totalInkomen,
           totalGespaard,
           spaarpct,
         }}
+        variabelPerCategorie={variabelPerCategorie}
         sortedCategories={sortedCategories}
         briefing={briefing}
         transactionCount={analyseTx?.length ?? 0}

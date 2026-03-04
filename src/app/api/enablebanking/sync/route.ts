@@ -416,15 +416,17 @@ export async function POST(request: NextRequest) {
         Cookie: request.headers.get("cookie") ?? "",
       }
 
-      const [catRes, recRes] = await Promise.all([
+      const [catRes, recRes, incRes] = await Promise.all([
         fetch(`${baseUrl}/api/categorize`, { method: "POST", headers }),
         fetch(`${baseUrl}/api/recurring/detect`, { method: "POST", headers }),
+        fetch(`${baseUrl}/api/income/detect`, { method: "POST", headers }),  // ← nieuw
       ])
 
       const catData = await catRes.json().catch(() => ({}))
       const recData = await recRes.json().catch(() => ({}))
+      const incData = await incRes.json().catch(() => ({}))
 
-      console.log(`[Sync] Categorize: ${catData.categorized ?? 0} tx | Recurring: ${recData.updated ?? 0} merchants`)
+      console.log(`[Sync] Categorize: ${catData.categorized ?? 0} | Recurring: ${recData.updated ?? 0} | Income: ${incData.updated ?? 0}`)
     } catch (e) {
       console.warn("[Sync] Post-processing mislukt (non-blocking):", e)
     }

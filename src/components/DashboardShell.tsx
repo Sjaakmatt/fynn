@@ -26,6 +26,13 @@ const CATEGORY_ICONS: Record<string, string> = {
   'inkomen': '💵', 'overig': '📦',
 }
 
+const CATEGORY_LABELS: Record<string, string> = {
+  'boodschappen': 'Boodschappen',
+  'transport': 'Transport',
+  'eten & drinken': 'Eten & drinken',
+  'kleding': 'Kleding',
+}
+
 interface Props {
   user: { id: string; email?: string; firstName?: string }
   accounts: { id: string; account_name: string; iban: string; balance?: number | null; account_type?: string }[]
@@ -39,6 +46,7 @@ interface Props {
     totalInkomen: number
     totalGespaard: number
     spaarpct: string
+    variabelReservering: number
   }
   sortedCategories: [string, { total: number; count: number }][]
   briefing: { content: string; created_at: string } | null
@@ -49,18 +57,20 @@ interface Props {
   activeMonthLabel?: string
   isHistoricData?: boolean
   pendingItems?: { description: string; amount: number; category: string; day_of_month: number }[]
+  variabelPerCategorie?: Record<string, { budget: number; gespendeerd: number; resterend: number }>
 }
 
 export default function DashboardShell({
   user, accounts, stats, sortedCategories, briefing,
   transactionCount, subscriptionStatus, trialEndsAt, isPro,
-  activeMonthLabel, isHistoricData,
+  activeMonthLabel, isHistoricData, variabelPerCategorie,
 }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
 
   const [showSavingsSetup, setShowSavingsSetup] = useState(false)
   const [showBankModal, setShowBankModal] = useState(false)
+  const [showBreakdown, setShowBreakdown] = useState(false)
 
   useEffect(() => {
     if (searchParams.get('connected') === 'true') {
@@ -113,7 +123,6 @@ export default function DashboardShell({
 
         <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
 
-          {/* Savings setup — toont direct na bank koppelen */}
           {showSavingsSetup && (
             <SavingsSetup
               onComplete={() => {
@@ -123,12 +132,10 @@ export default function DashboardShell({
             />
           )}
 
-          {/* Onboarding — toont als er nog geen rekeningen zijn */}
           {!hasData && !showSavingsSetup && (
             <OnboardingFlow userId={user.id} isPro={isPro} />
           )}
 
-          {/* Banner — altijd zichtbaar */}
           <SubscriptionBanner
             status={subscriptionStatus}
             trialEndsAt={trialEndsAt}
@@ -143,18 +150,29 @@ export default function DashboardShell({
                 style={{ backgroundColor: 'var(--brand)' }}>
                 <p className="text-sm opacity-70 mb-3">Hoi {firstName} 👋</p>
                 <p className="text-xs opacity-60 mb-1">Vrij te besteden deze maand</p>
-                <p className="text-5xl font-bold mb-1">
-                  €{stats.beschikbaar.toFixed(0)}
+                <p className="text-5xl font-bold mb-1"
+                  style={{ color: stats.beschikbaar < 0 ? '#FCA5A5' : 'white' }}>
+                  €{Math.abs(stats.beschikbaar).toFixed(0)}
+                  {stats.beschikbaar < 0 && <span className="text-2xl ml-2 opacity-80">tekort</span>}
                 </p>
-                <p className="text-xs opacity-50 mb-5">
-                  na saldo (€{stats.totalBalance.toFixed(0)}) min nog te betalen (€{stats.nogTeBetalen.toFixed(0)})
-                </p>
+
+                {/* Subtitel met breakdown knop */}
+                <button
+                  onClick={() => setShowBreakdown(true)}
+                  className="text-xs opacity-50 mb-5 flex items-center gap-1 hover:opacity-80 transition-opacity"
+                >
+                  <span>
+                    saldo €{stats.totalBalance.toFixed(0)}
+                    {stats.nogTeBetalen > 0 && ` − €${stats.nogTeBetalen.toFixed(0)} vaste lasten`}
+                    {stats.variabelReservering > 0 && ` − €${stats.variabelReservering.toFixed(0)} variabel`}
+                  </span>
+                  <span className="opacity-60">ⓘ</span>
+                </button>
 
                 {/* Rekeningen */}
                 <div className="border-t border-white/10 pt-4 space-y-2">
                   {[...accounts]
                     .sort((a, b) => {
-                      // Betaalrekeningen eerst, spaarrekeningen onderaan
                       if (a.account_type === 'SAVINGS') return 1
                       if (b.account_type === 'SAVINGS') return -1
                       return 0
@@ -300,6 +318,101 @@ export default function DashboardShell({
 
         {showBankModal && (
           <BankConnectModal onClose={() => setShowBankModal(false)} />
+        )}
+
+        {/* ── Breakdown Modal ── */}
+        {showBreakdown && (
+          <div
+            className="fixed inset-0 z-50 flex items-end justify-center"
+            style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+            onClick={() => setShowBreakdown(false)}
+          >
+            <div
+              className="w-full max-w-lg rounded-t-3xl p-6 pb-10 space-y-5"
+              style={{ backgroundColor: 'var(--surface)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold" style={{ color: 'var(--text)' }}>
+                  Hoe is dit berekend?
+                </h2>
+                <button
+                  onClick={() => setShowBreakdown(false)}
+                  className="text-xl leading-none"
+                  style={{ color: 'var(--muted)' }}>
+                  ✕
+                </button>
+              </div>
+
+              {/* Regel: saldo */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between py-3 border-b" style={{ borderColor: 'var(--border)' }}>
+                  <div>
+                    <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>Huidig saldo</p>
+                    <p className="text-xs" style={{ color: 'var(--muted)' }}>Betaalrekening(en)</p>
+                  </div>
+                  <p className="text-sm font-semibold" style={{ color: '#4ade80' }}>
+                    + €{stats.totalBalance.toFixed(0)}
+                  </p>
+                </div>
+
+                {/* Vaste lasten */}
+                {stats.nogTeBetalen > 0 && (
+                  <div className="flex items-center justify-between py-3 border-b" style={{ borderColor: 'var(--border)' }}>
+                    <div>
+                      <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>Nog te betalen vaste lasten</p>
+                      <p className="text-xs" style={{ color: 'var(--muted)' }}>Vóór je volgende salaris</p>
+                    </div>
+                    <p className="text-sm font-semibold" style={{ color: '#FCA5A5' }}>
+                      − €{stats.nogTeBetalen.toFixed(0)}
+                    </p>
+                  </div>
+                )}
+
+                {/* Variabele budgetten */}
+                {variabelPerCategorie && Object.keys(variabelPerCategorie).length > 0 && (
+                  <div className="py-3 border-b space-y-2" style={{ borderColor: 'var(--border)' }}>
+                    <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>Variabele budgetten</p>
+                    <p className="text-xs mb-2" style={{ color: 'var(--muted)' }}>
+                      Reservering op basis van je gemiddelde uitgaven — wat je nog niet hebt uitgegeven
+                    </p>
+                    {Object.entries(variabelPerCategorie).map(([cat, v]) => (
+                      <div key={cat} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">{CATEGORY_ICONS[cat] ?? '📦'}</span>
+                          <div>
+                            <p className="text-xs font-medium" style={{ color: 'var(--text)' }}>
+                              {CATEGORY_LABELS[cat] ?? cat}
+                            </p>
+                            <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                              €{v.gespendeerd} van €{v.budget} budget al uitgegeven
+                            </p>
+                          </div>
+                        </div>
+                        <p className="text-xs font-semibold" style={{ color: '#FCA5A5' }}>
+                          − €{v.resterend}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Eindtotaal */}
+                <div className="flex items-center justify-between pt-2">
+                  <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>Vrij te besteden</p>
+                  <p className="text-lg font-bold" style={{ color: stats.beschikbaar < 0 ? '#FCA5A5' : '#4ade80' }}>
+                    €{Math.abs(stats.beschikbaar).toFixed(0)}
+                    {stats.beschikbaar < 0 && ' tekort'}
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-xs text-center" style={{ color: 'var(--muted)' }}>
+                Lasten ná je salaris tellen niet mee — die betaal je als het geld er is.
+              </p>
+            </div>
+          </div>
         )}
 
       </div>

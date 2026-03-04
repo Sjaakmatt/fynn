@@ -77,11 +77,28 @@ export async function POST(_request: NextRequest) {
       );
     }
 
+    // Pre-filter: interne transfers herkennen
+    function isInterneTransfer(description: string): boolean {
+      const d = description.toLowerCase()
+      
+      // Expliciete spaar/intern keywords
+      const internalKeywords = [
+        'spaarre', 'spaarrekening', 'direct sparen', 'eigen rekening',
+        'salarisrekening', 'jongerengroeirekening', 'beleggingsrekening',
+        'oranje spaarrekening', 'internetsparen', 'flexibel sparen',
+      ]
+      if (internalKeywords.some(k => d.includes(k))) return true
+
+      // Periodieke overboeking = altijd eigen rekening
+      if (d.includes('periodieke overb') || d.includes('periodieke overboeking')) return true
+
+      return false
+    }
+
     for (const tx of txs) {
       const amt = Number(tx.amount ?? 0);
       const amountAbs = Math.abs(Number.isFinite(amt) ? amt : 0);
 
-      // Zorg dat merchant_key bestaat
       let merchantKey = tx.merchant_key;
       let merchantName = tx.merchant_name;
 
@@ -91,16 +108,14 @@ export async function POST(_request: NextRequest) {
         merchantName = ex.merchantName;
       }
 
-      // Override wins
       const overrideCategory = merchantKey ? overrideMap.get(merchantKey) : undefined;
-
-      // 0) merchantKey moet bestaan (we berekenen hem hierboven al)
       const mapCategory = merchantKey ? (merchantMapCategory.get(merchantKey) ?? null) : null;
 
-      // 1) user override wint
-      // 2) global merchant_map category daarna
-      // 3) fallback rules op merchantName (niet raw description)
+      // Interne transfer pre-filter — wint altijd, ook van merchant_map
+      const isInternal = isInterneTransfer(tx.description ?? "")
+      
       const category =
+        (isInternal ? 'sparen' : undefined) ??
         overrideCategory ??
         mapCategory ??
         categorizeTransaction(merchantName ?? tx.description ?? "", Number.isFinite(amt) ? amt : 0);

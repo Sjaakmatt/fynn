@@ -43,6 +43,8 @@ const RULES: Rule[] = [
     keywords: [
       'spaarrekening', 'spaartegoed', 'naar spaar', 'spaarrekening overboeking',
       'oranje spaarrekening', 'rabo sparen', 'asr sparen', 'nn sparen',
+      'direct sparen', 'internetsparen', 'flexibel sparen', 'jongerengroeirekening',
+      'salarisrekening', // interne ABN AMRO overboekingen
       'degiro', 'bux ', 'peaks ', 'brand new day', 'meesman', 'binck', 'saxo',
       'beleggingsrekening', 'pensioenpremie', 'lijfrente', 'deposito',
       'northern trust', 'vanguard', 'indexfonds',
@@ -59,18 +61,36 @@ const RULES: Rule[] = [
       'stadswonen', 'huurpenningen',
       'nuon', 'vattenfall', 'eneco', 'essent', 'greenchoice',
       'budget energie', 'tibber', 'electrabel', 'eandis', 'fluvius',
-      'waternet', 'evides', 'brabant water', 'vitens', 'dunea',
+      'waternet', 'evides', 'brabant water', 'vitens', 'dunea', 'pwn ',
       'waterrekening', 'drinkwater',
       'ozb', 'rioolheffing', 'afvalstoffenheffing', 'gemeenteheffing',
       'woonverzekering', 'inboedelverzekering', 'opstalverzekering',
       'vve bijdrage', 'erfpacht', 'woonlasten',
       'ziggo', 'kpn internet', 'odido thuis', 't-mobile thuis',
       'tele2 thuis', 'delta fiber', 'caiway', 'online.nl',
+      // Installateurs & onderhoud
+      'loodgieter', 'installateur', 'cv ketel', 'cv en lucht',
+      'liftinstallatie', 'dakdekker', 'schilder', 'glazenwasser',
+      'schoorsteenveger', 'elektricien',
     ],
     category: 'wonen',
   },
 
-  // ── ENTERTAINMENT (voor boodschappen — voorkomt Mediamarkt bug) ──
+  // ── OVERHEID & BELASTINGEN (vóór transport — voorkomt miscategorisatie) ──
+  {
+    keywords: [
+      'belastingdienst', 'belasting ', 'gemeentebelasting',
+      'waterschapsbelasting', 'hoogheemraadschap', 'waterschap',
+      'cak ', 'centraal administratie kantoor',
+      'rdw ', 'rijksdienst voor',
+      'cjib ', 'boete ', 'naheffing',
+      'duo ', 'dienst uitvoering onderwijs',
+      'svb ', 'sociale verzekeringsbank',
+    ],
+    category: 'overig', // overheid valt in overig, niet transport
+  },
+
+  // ── ENTERTAINMENT (vóór boodschappen — voorkomt Mediamarkt bug) ──
   {
     keywords: [
       'mediamarkt', 'coolblue', 'fnac', 'bcc ',
@@ -106,23 +126,17 @@ const RULES: Rule[] = [
   // ── ETEN & DRINKEN ───────────────────────────────────────────────
   {
     keywords: [
-      // Bezorgdiensten
       'thuisbezorgd', 'uber eats', 'deliveroo', 'just eat', 'takeaway',
-      // Maaltijdboxen
       'hellofresh', 'marley spoon', 'goodfood', 'hello chef', 'maaltijdbox',
-      // Fast food
       'mcdonalds', 'burger king', 'kfc ', 'subway ', 'five guys',
       'taco bell', 'dominos', 'domino', 'new york pizza', 'pizza hut',
       'cafetaria', 'snackbar', 'shoarma', 'kebab ', 'falafel',
-      // Restaurants & cafes
       'restaurant', 'cafe ', 'café ', 'bistro', 'brasserie',
       'eetcafe', 'pizzeria', 'sushi', 'ramen', 'noodle', 'wokrestaurant',
       'broodjeszaak', 'lunchroom', 'lunchcafe', 'lunchbar',
       'broodje', 'kruimel', 'bakker ',
-      // Bars & kroegen
       'wetherspoon', 'drie gezusters', 'proeflokaal', 'kroeg',
       'grand cafe', 'eetbar', 'wine bar',
-      // Koffie
       'starbucks', 'costa coffee', 'espressobar', 'koffiezaak',
       'coffee company', 'bagels and beans',
     ],
@@ -138,6 +152,7 @@ const RULES: Rule[] = [
       'uber ', 'bolt taxi', 'lyft', 'taxi ', 'cabify',
       'shell ', 'bp ', 'esso ', 'total ', 'q8 ', 'texaco',
       'tinq ', 'tango ', 'jet ', 'brandstof', 'benzine', 'diesel',
+      'tankstation', 'tanken',
       'parkeren', 'parkeermeter', 'q-park', 'apcoa', 'interparking',
       'parkbee', 'yellowbrick', 'p1 parking',
       'wegenbelasting', 'motorrijtuigenbelasting', 'mrb ',
@@ -176,6 +191,8 @@ const RULES: Rule[] = [
       // Sport
       'basic-fit', 'anytime fitness', 'sportschool', 'fit for free',
       'planet fitness', 'clubsportive', 'healthcity',
+      // Generieke subscription patterns
+      'subscription', 'abonnement', 'maandelijks lidmaatschap',
       // Overig
       'tinder', 'bumble', 'hinge ', 'nordvpn', 'expressvpn',
       'lastpass', 'dashlane', '1password',
@@ -191,12 +208,14 @@ const RULES: Rule[] = [
       'zorgverzekering', 'cz ', 'vgz ', 'menzis', 'zilveren kruis',
       'achmea zorg', 'eno ', 'dsw ', 'onvz ', 'ditzo', 'unive zorg',
       'eigen risico', 'zorgpremie', 'ziekenhuis', 'kliniek',
-      'drogist', 'da drogist', 'optician', 'brillen',
+      'drogist', 'da drogist', 'optician', 'brillen', 'lenzen', 'contactlens',
       'hans anders', 'eyes and more', 'specsavers', 'pearle',
-      // Verzekeraars
+      'holland barrett', 'vitaminstore', 'gezondheidswinkel',
+      // Verzekeraars (algemeen)
       'centraal beheer', 'nationale nederlanden', 'nn verzekering',
       'interpolis', 'aegon verzekering', 'asr verzekering',
-      'allianz', 'reaal', 'univé',
+      'allianz', 'reaal', 'unive',
+      'nh1816', 'inshared', 'hema verzekering',
     ],
     category: 'gezondheid',
   },
@@ -212,25 +231,24 @@ const RULES: Rule[] = [
       'jack jones', 'only ', 'vero moda', 'tommy hilfiger',
       'calvin klein', 'ralph lauren', 'lacoste',
       'schoenenreus', 'footlocker', 'omoda', 'sacha schoenen',
+      'zeeman', 'wibra', 'action ', // goedkope kleding/huishoud
     ],
     category: 'kleding',
   },
 ]
 
-// Normaliseer beschrijving voor matching
 function normalize(text: string): string {
   return text
     .toLowerCase()
-    .replace(/'/g, '')        // apostrof weghalen (mcdonald's → mcdonalds)
-    .replace(/'/g, '')        // curly apostrof
+    .replace(/'/g, '')
+    .replace(/'/g, '')
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // diacritics weg
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9\s&+\-\.]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 }
 
-// Hoofdfunctie — categoriseer één transactie
 export function categorizeTransaction(description: string, amount: number): Category {
   const normalized = normalize(description)
 
@@ -247,7 +265,6 @@ export function categorizeTransaction(description: string, amount: number): Cate
   return 'overig'
 }
 
-// Batch categorisatie
 export function categorizeTransactions(
   transactions: { id: string; description: string; amount: number }[]
 ): { id: string; category: Category }[] {
