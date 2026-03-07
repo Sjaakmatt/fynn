@@ -106,7 +106,7 @@ export default function FinancialRadar() {
               €{projection.projectedFreeSpace.toFixed(0)}
             </p>
             <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
-              na vaste lasten van €{projection.fixedExpensesThisMonth.toFixed(0)}/maand
+              na €{projection.stillToPay.toFixed(0)} nog te betalen vaste lasten
             </p>
           </div>
 

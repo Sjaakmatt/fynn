@@ -1,5 +1,6 @@
 // src/lib/categorize-engine.ts
 // Rule-based transactie categorisatie — geen AI calls
+// Prioriteit: merchant_user_overrides > merchant_map.category > rules > 'overig'
 // Deterministisch, gratis, <1ms per transactie
 
 export type Category =
@@ -21,6 +22,8 @@ interface Rule {
   amountCheck?: (amount: number) => boolean
 }
 
+// ── RULES (fallback als merchant_map geen category heeft) ──────
+
 const RULES: Rule[] = [
   // ── INKOMEN ──────────────────────────────────────────────────────
   {
@@ -33,6 +36,7 @@ const RULES: Rule[] = [
       'kinderbijslag', 'kindertoeslag', 'aow', 'pensioen uitkering',
       'belastingteruggave', 'belasting teruggave', 'toeslagen',
       'dividenduitkering', 'dividend', 'uitkering',
+      'svb', 'sociale verzekeringsbank',
     ],
     category: 'inkomen',
     amountCheck: (a) => a > 0,
@@ -44,7 +48,7 @@ const RULES: Rule[] = [
       'spaarrekening', 'spaartegoed', 'naar spaar', 'spaarrekening overboeking',
       'oranje spaarrekening', 'rabo sparen', 'asr sparen', 'nn sparen',
       'direct sparen', 'internetsparen', 'flexibel sparen', 'jongerengroeirekening',
-      'salarisrekening', // interne ABN AMRO overboekingen
+      'salarisrekening',
       'degiro', 'bux ', 'peaks ', 'brand new day', 'meesman', 'binck', 'saxo',
       'beleggingsrekening', 'pensioenpremie', 'lijfrente', 'deposito',
       'northern trust', 'vanguard', 'indexfonds',
@@ -61,14 +65,15 @@ const RULES: Rule[] = [
       'stadswonen', 'huurpenningen',
       'nuon', 'vattenfall', 'eneco', 'essent', 'greenchoice',
       'budget energie', 'tibber', 'electrabel', 'eandis', 'fluvius',
-      'waternet', 'evides', 'brabant water', 'vitens', 'dunea', 'pwn ',
-      'waterrekening', 'drinkwater',
+      'delta energie',
+      'waternet', 'evides', 'brabant water', 'vitens', 'dunea', 'pwn',
+      'waterrekening', 'drinkwater', 'waterleidingbedrijf',
       'ozb', 'rioolheffing', 'afvalstoffenheffing', 'gemeenteheffing',
+      'gemeentebelasting', 'gemeente ',
       'woonverzekering', 'inboedelverzekering', 'opstalverzekering',
       'vve bijdrage', 'erfpacht', 'woonlasten',
       'ziggo', 'kpn internet', 'odido thuis', 't-mobile thuis',
       'tele2 thuis', 'delta fiber', 'caiway', 'online.nl',
-      // Installateurs & onderhoud
       'loodgieter', 'installateur', 'cv ketel', 'cv en lucht',
       'liftinstallatie', 'dakdekker', 'schilder', 'glazenwasser',
       'schoorsteenveger', 'elektricien',
@@ -76,18 +81,51 @@ const RULES: Rule[] = [
     category: 'wonen',
   },
 
-  // ── OVERHEID & BELASTINGEN (vóór transport — voorkomt miscategorisatie) ──
+  // ── KINDEROPVANG (nieuw — vóór overheid) ─────────────────────────
   {
     keywords: [
-      'belastingdienst', 'belasting ', 'gemeentebelasting',
+      'kinderdagverblijf', 'buitenschoolse opvang', 'bso ',
+      'kinderopvang', 'gastouder', 'peuterspeelzaal', 'kdv ',
+      'naschoolse opvang', 'nso ',
+    ],
+    category: 'overig', // TODO: maak 'kinderen' categorie als je dat wilt
+  },
+
+  // ── OVERHEID & BELASTINGEN ──────────────────────────────────────
+  {
+    keywords: [
+      'belastingdienst',
       'waterschapsbelasting', 'hoogheemraadschap', 'waterschap',
       'cak ', 'centraal administratie kantoor',
       'rdw ', 'rijksdienst voor',
       'cjib ', 'boete ', 'naheffing',
       'duo ', 'dienst uitvoering onderwijs',
-      'svb ', 'sociale verzekeringsbank',
     ],
-    category: 'overig', // overheid valt in overig, niet transport
+    category: 'overig',
+  },
+
+  // ── TRANSPORT ────────────────────────────────────────────────────
+  {
+    keywords: [
+      'ns ', 'ns.nl', 'ov-chipkaart', 'ov chipkaart', 'translink',
+      'gvb ', 'ret ', 'htm ', 'connexxion', 'arriva ', 'qbuzz',
+      'de lijn', 'mivb', 'stib', 'nmbs', 'sncb',
+      'uber ', 'bolt taxi', 'lyft', 'taxi ', 'cabify',
+      'shell ', 'bp ', 'esso ', 'total ', 'q8 ', 'texaco',
+      'tinq ', 'tango ', 'jet ', 'brandstof', 'benzine', 'diesel',
+      'tankstation', 'tanken',
+      'parkeren', 'parkeermeter', 'q-park', 'apcoa', 'interparking',
+      'parkbee', 'yellowbrick', 'p1 parking',
+      'wegenbelasting', 'motorrijtuigenbelasting', 'mrb ',
+      'anwb ', 'autoverzekering',
+      'volkswagen pon', 'autolease', 'lease plan', 'athlon',
+      'swapfiets', 'lease fiets',
+      'felyx', 'check scooter', 'dott ', 'tier ', 'lime ',
+      'ryanair', 'transavia', 'easyjet', 'klm ', 'tui fly', 'wizz',
+      'schiphol', 'eindhoven airport',
+      'ns treinen', 'trein',
+    ],
+    category: 'transport',
   },
 
   // ── ENTERTAINMENT (vóór boodschappen — voorkomt Mediamarkt bug) ──
@@ -143,57 +181,25 @@ const RULES: Rule[] = [
     category: 'eten & drinken',
   },
 
-  // ── TRANSPORT ────────────────────────────────────────────────────
-  {
-    keywords: [
-      'ns ', 'ns.nl', 'ov-chipkaart', 'ov chipkaart', 'translink',
-      'gvb ', 'ret ', 'htm ', 'connexxion', 'arriva ', 'qbuzz',
-      'de lijn', 'mivb', 'stib', 'nmbs', 'sncb',
-      'uber ', 'bolt taxi', 'lyft', 'taxi ', 'cabify',
-      'shell ', 'bp ', 'esso ', 'total ', 'q8 ', 'texaco',
-      'tinq ', 'tango ', 'jet ', 'brandstof', 'benzine', 'diesel',
-      'tankstation', 'tanken',
-      'parkeren', 'parkeermeter', 'q-park', 'apcoa', 'interparking',
-      'parkbee', 'yellowbrick', 'p1 parking',
-      'wegenbelasting', 'motorrijtuigenbelasting', 'mrb ',
-      'anwb ', 'autoverzekering',
-      'swapfiets', 'lease fiets',
-      'felyx', 'check scooter', 'dott ', 'tier ', 'lime ',
-      'ryanair', 'transavia', 'easyjet', 'klm ', 'tui fly', 'wizz',
-      'schiphol', 'eindhoven airport',
-      'ns treinen', 'trein',
-    ],
-    category: 'transport',
-  },
-
   // ── ABONNEMENTEN ─────────────────────────────────────────────────
   {
     keywords: [
-      // Streaming video
       'netflix', 'disney+', 'disney plus', 'videoland', 'npo plus',
       'hbo max', 'max.com', 'paramount+', 'amazon prime', 'prime video',
       'dazn ', 'viaplay', 'ziggo sport', 'discovery+', 'apple tv',
-      // Streaming audio
       'spotify', 'apple music', 'deezer', 'tidal ',
-      // Apple/Google
       'itunes', 'apple one', 'apple icloud', 'google play',
       'google one', 'youtube premium', 'youtube music',
-      // Software
       'adobe ', 'canva ', 'figma ', 'notion ', 'slack ', 'dropbox',
       'microsoft 365', 'office 365', 'onedrive', 'icloud storage',
       'chatgpt', 'openai', 'anthropic', 'midjourney', 'github',
-      // Telecom
       'kpn ', 'vodafone ', 't-mobile ', 'odido ', 'tele2 ', 'simpel ',
       'lebara', 'lycamobile', 'ben ', 'hollandsnieuwe',
-      // Media
       'nrc ', 'volkskrant', 'fd ', 'telegraaf', 'trouw ', 'ad.nl',
       'blendle', 'readly', 'scribd',
-      // Sport
       'basic-fit', 'anytime fitness', 'sportschool', 'fit for free',
       'planet fitness', 'clubsportive', 'healthcity',
-      // Generieke subscription patterns
       'subscription', 'abonnement', 'maandelijks lidmaatschap',
-      // Overig
       'tinder', 'bumble', 'hinge ', 'nordvpn', 'expressvpn',
       'lastpass', 'dashlane', '1password',
     ],
@@ -211,8 +217,8 @@ const RULES: Rule[] = [
       'drogist', 'da drogist', 'optician', 'brillen', 'lenzen', 'contactlens',
       'hans anders', 'eyes and more', 'specsavers', 'pearle',
       'holland barrett', 'vitaminstore', 'gezondheidswinkel',
-      // Verzekeraars (algemeen)
-      'centraal beheer', 'nationale nederlanden', 'nn verzekering',
+      'centraal beheer', 'nationale nederlanden', 'nationale-nederlanden',
+      'nn verzekering',
       'interpolis', 'aegon verzekering', 'asr verzekering',
       'allianz', 'reaal', 'unive',
       'nh1816', 'inshared', 'hema verzekering',
@@ -231,10 +237,22 @@ const RULES: Rule[] = [
       'jack jones', 'only ', 'vero moda', 'tommy hilfiger',
       'calvin klein', 'ralph lauren', 'lacoste',
       'schoenenreus', 'footlocker', 'omoda', 'sacha schoenen',
-      'zeeman', 'wibra', 'action ', // goedkope kleding/huishoud
+      'zeeman', 'wibra', 'action ',
     ],
     category: 'kleding',
   },
+]
+
+// ── INTERNE OVERBOEKING DETECTIE ───────────────────────────────
+
+const INTERNAL_TRANSFER_PATTERNS = [
+  'rekening ',      // "Rekening Sjaak", "Rekening Lisa"
+  'eigen rekening',
+  'overboeking eigen',
+  'van spaarrekening',
+  'naar spaarrekening',
+  'tussenrekening',
+  'kruisposten',
 ]
 
 function normalize(text: string): string {
@@ -249,27 +267,73 @@ function normalize(text: string): string {
     .trim()
 }
 
-export function categorizeTransaction(description: string, amount: number): Category {
+/**
+ * Categoriseer een transactie.
+ *
+ * Prioriteit:
+ * 1. merchantMapCategory (uit merchant_map.category of merchant_user_overrides)
+ * 2. Rule-based matching op description
+ * 3. 'overig' als fallback
+ *
+ * Als merchantMapCategory is meegegeven, wordt die gebruikt tenzij null/undefined.
+ * De rule-engine draait alleen als er geen merchant_map categorie is.
+ */
+export function categorizeTransaction(
+  description: string,
+  amount: number,
+  merchantMapCategory?: string | null,
+): Category {
+  // 1) merchant_map / user override heeft prioriteit
+  if (merchantMapCategory && isValidCategory(merchantMapCategory)) {
+    return merchantMapCategory as Category
+  }
+
   const normalized = normalize(description)
 
+  // 2) Check interne overboekingen
+  for (const pattern of INTERNAL_TRANSFER_PATTERNS) {
+    if (normalized.includes(normalize(pattern))) {
+      // Interne overboekingen: negatief = sparen, positief = ignore (geen inkomen)
+      return amount < 0 ? 'sparen' : 'overig'
+    }
+  }
+
+  // 3) Rule-based
   for (const rule of RULES) {
     if (rule.amountCheck && !rule.amountCheck(amount)) continue
-
     for (const keyword of rule.keywords) {
-      const normalizedKeyword = normalize(keyword)
-      if (normalized.includes(normalizedKeyword)) {
+      if (normalized.includes(normalize(keyword))) {
         return rule.category
       }
     }
   }
+
   return 'overig'
 }
 
+/**
+ * Batch categorisatie.
+ * Accepteert optioneel merchantMapCategory per transactie.
+ */
 export function categorizeTransactions(
-  transactions: { id: string; description: string; amount: number }[]
+  transactions: {
+    id: string
+    description: string
+    amount: number
+    merchantMapCategory?: string | null
+  }[]
 ): { id: string; category: Category }[] {
   return transactions.map(t => ({
     id: t.id,
-    category: categorizeTransaction(t.description, t.amount),
+    category: categorizeTransaction(t.description, t.amount, t.merchantMapCategory),
   }))
+}
+
+function isValidCategory(cat: string): boolean {
+  const valid: Set<string> = new Set([
+    'wonen', 'boodschappen', 'eten & drinken', 'transport',
+    'abonnementen', 'kleding', 'gezondheid', 'entertainment',
+    'sparen', 'inkomen', 'overig',
+  ])
+  return valid.has(cat)
 }

@@ -1,7 +1,11 @@
+// src/lib/decision-engine.ts
+// Gebruikt merchant_map als databron — geen eigen detectie logica
+
 import { SupabaseClient } from '@supabase/supabase-js'
 
 export interface RecurringItem {
   description: string
+  merchant_key: string
   amount: number
   category: string
   dayOfMonth: number
@@ -31,186 +35,216 @@ export interface Signal {
   date?: string
 }
 
-// Detecteer terugkerende transacties op basis van patronen
+// Haal recurring items op uit merchant_map (niet zelf detecteren)
 export async function detectRecurringItems(
   userId: string,
   supabase: SupabaseClient
 ): Promise<RecurringItem[]> {
-  const { data: transactions } = await supabase
+  const threeMonthsAgo = (() => {
+    const d = new Date()
+    d.setMonth(d.getMonth() - 3)
+    return d.toISOString().slice(0, 10)
+  })()
+
+  // Haal recurring merchants op
+  const { data: merchantMap } = await supabase
+    .from('merchant_map')
+    .select('merchant_key, merchant_name, category')
+    .eq('recurring_hint', true)
+    .or('is_variable.is.null,is_variable.eq.false')
+
+  if (!merchantMap || merchantMap.length === 0) return []
+
+  // Haal overrides op
+  const { data: overrides } = await supabase
+    .from('merchant_user_overrides')
+    .select('merchant_key, is_variable')
+    .eq('user_id', userId)
+
+  const variableKeys = new Set(
+    (overrides ?? []).filter(o => o.is_variable).map(o => o.merchant_key)
+  )
+
+  const recurringKeys = merchantMap
+    .map(m => m.merchant_key)
+    .filter(k => !variableKeys.has(k))
+
+  if (recurringKeys.length === 0) return []
+
+  // Haal transacties op voor deze merchants
+  const { data: txs } = await supabase
     .from('transactions')
-    .select('description, amount, transaction_date, category')
+    .select('merchant_key, merchant_name, amount, transaction_date, category')
     .eq('user_id', userId)
     .lt('amount', 0)
+    .gte('transaction_date', threeMonthsAgo)
+    .in('merchant_key', recurringKeys)
     .order('transaction_date', { ascending: false })
-    .limit(200)
 
-  if (!transactions || transactions.length === 0) return []
+  if (!txs || txs.length === 0) return []
 
-  // Groepeer op beschrijving (genormaliseerd)
-  const groups: Record<string, { amounts: number[]; dates: string[]; category: string }> = {}
+  // Groepeer per merchant_key
+  const groups = new Map<string, { amounts: number[]; days: number[]; dates: string[]; name: string; category: string }>()
 
-  transactions.forEach(tx => {
-    const key = normalizeDescription(tx.description)
-    const amount = Math.abs(parseFloat(tx.amount))
-    if (!groups[key]) {
-      groups[key] = { amounts: [], dates: [], category: tx.category ?? 'overig' }
+  for (const tx of txs) {
+    const k = tx.merchant_key
+    if (!k) continue
+    if (!groups.has(k)) {
+      const mapEntry = merchantMap.find(m => m.merchant_key === k)
+      groups.set(k, {
+        amounts: [],
+        days: [],
+        dates: [],
+        name: mapEntry?.merchant_name ?? tx.merchant_name ?? k,
+        category: mapEntry?.category ?? tx.category ?? 'overig',
+      })
     }
-    groups[key].amounts.push(amount)
-    groups[key].dates.push(tx.transaction_date)
-  })
+    const g = groups.get(k)!
+    g.amounts.push(Math.abs(Number(tx.amount)))
+    g.days.push(new Date(tx.transaction_date).getDate())
+    g.dates.push(tx.transaction_date)
+  }
 
-  const recurring: RecurringItem[] = []
+  const result: RecurringItem[] = []
 
-  for (const [desc, data] of Object.entries(groups)) {
-    if (data.amounts.length < 2) continue
+  for (const [key, g] of groups) {
+    if (g.amounts.length === 0) continue
 
-    const avgAmount = data.amounts.reduce((a, b) => a + b, 0) / data.amounts.length
-    
-    if (avgAmount < 10) continue // ← nu ná de declaratie
+    const sorted = [...g.amounts].sort((a, b) => a - b)
+    const amount = sorted[Math.floor(sorted.length / 2)] // mediaan
 
-    const variance = data.amounts.map(a => Math.abs(a - avgAmount) / avgAmount)
-    const avgVariance = variance.reduce((a, b) => a + b, 0) / variance.length
+    const sortedDays = [...g.days].sort((a, b) => a - b)
+    const dayOfMonth = sortedDays[Math.floor(sortedDays.length / 2)]
 
-    if (avgVariance > 0.1) continue
-
-    const days = data.dates.map(d => new Date(d).getDate())
-    const avgDay = Math.round(days.reduce((a, b) => a + b, 0) / days.length)
-
-    const confidence = Math.min(0.6 + (data.amounts.length * 0.1), 1.0)
-
-    recurring.push({
-      description: desc,
-      amount: avgAmount,
-      category: data.category,
-      dayOfMonth: avgDay,
-      confidence,
-      lastSeen: data.dates[0],
+    result.push({
+      description: g.name,
+      merchant_key: key,
+      amount,
+      category: g.category,
+      dayOfMonth,
+      confidence: 0.8,
+      lastSeen: g.dates[0],
     })
   }
 
-  return recurring.sort((a, b) => b.amount - a.amount)
+  return result.sort((a, b) => b.amount - a.amount)
 }
 
-// Projecteer cashflow voor de komende 30 dagen
+// Projecteer cashflow
 export async function projectCashflow(
   userId: string,
   supabase: SupabaseClient
 ): Promise<CashflowProjection> {
   const today = new Date()
   const currentDay = today.getDate()
+  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+    .toISOString().split('T')[0]
 
-  // Haal transacties op
-  const { data: transactions } = await supabase
-    .from('transactions')
-    .select('amount, category, transaction_date, description')
+  // 1) Haal echt saldo op (alleen betaalrekeningen)
+  const { data: accounts } = await supabase
+    .from('bank_accounts')
+    .select('balance, account_type')
     .eq('user_id', userId)
-    .not('category', 'is', null)
-    .order('transaction_date', { ascending: false })
-    .limit(200)
 
-  if (!transactions || transactions.length === 0) {
-    return emptyProjection()
+  const currentBalance = (accounts ?? [])
+    .filter(a => a.account_type !== 'SAVINGS')
+    .reduce((s, a) => s + (Number(a.balance) || 0), 0)
+
+  // 2) Haal inkomen op uit merchant_map income_hint
+  const { data: incomeMap } = await supabase
+    .from('merchant_map')
+    .select('merchant_key')
+    .eq('income_hint', true)
+
+  let salaryDate = 25
+  let salaryExpected = 0
+
+  if (incomeMap && incomeMap.length > 0) {
+    const threeMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 3, 1)
+      .toISOString().slice(0, 10)
+
+    const { data: incomeTx } = await supabase
+      .from('transactions')
+      .select('merchant_key, amount, transaction_date')
+      .eq('user_id', userId)
+      .gt('amount', 0)
+      .gte('transaction_date', threeMonthsAgo)
+      .in('merchant_key', incomeMap.map(i => i.merchant_key))
+
+    if (incomeTx && incomeTx.length > 0) {
+      // Groepeer per merchant, bereken mediaan dag en mediaan bedrag
+      const incomeGroups = new Map<string, { amounts: number[]; days: number[] }>()
+      for (const tx of incomeTx) {
+        if (!incomeGroups.has(tx.merchant_key)) incomeGroups.set(tx.merchant_key, { amounts: [], days: [] })
+        incomeGroups.get(tx.merchant_key)!.amounts.push(Number(tx.amount))
+        incomeGroups.get(tx.merchant_key)!.days.push(new Date(tx.transaction_date).getDate())
+      }
+
+      const incomeSources = Array.from(incomeGroups.values()).map(g => {
+        const sortedAmounts = [...g.amounts].sort((a, b) => a - b)
+        const sortedDays = [...g.days].sort((a, b) => a - b)
+        return {
+          amount: sortedAmounts[Math.floor(sortedAmounts.length / 2)],
+          day: sortedDays[Math.floor(sortedDays.length / 2)],
+        }
+      })
+
+      salaryDate = Math.min(...incomeSources.map(s => s.day))
+      salaryExpected = incomeSources.reduce((s, i) => s + i.amount, 0)
+    }
   }
 
-  // Bereken maandinkomen (gemiddelde over afgelopen 3 maanden)
-  const incomeTransactions = transactions.filter(tx => parseFloat(tx.amount) > 0)
-  const totalIncome = incomeTransactions.reduce((sum, tx) => sum + parseFloat(tx.amount), 0)
-  const dates = transactions.map(tx => tx.transaction_date)
-  const oldest = new Date(dates[dates.length - 1])
-  const newest = new Date(dates[0])
-  const monthsOfData = Math.max(1, Math.round(
-    (newest.getTime() - oldest.getTime()) / (1000 * 60 * 60 * 24 * 30)
-  ))
-  const monthlyIncome = monthsOfData <= 1 ? totalIncome : totalIncome / monthsOfData
-
-  // Detecteer salaris dag (grootste terugkerende inkomst)
-  const salaryDay = detectSalaryDay(incomeTransactions)
-
-  // Detecteer vaste lasten
+  // 3) Recurring items uit merchant_map
   const recurringItems = await detectRecurringItems(userId, supabase)
-  const fixedExpenses = recurringItems.filter(r => r.confidence >= 0.8)
 
-  // Wat is al betaald deze maand?
-  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0]
-  const paidThisMonth = transactions
-    .filter(tx => tx.transaction_date >= startOfMonth && parseFloat(tx.amount) < 0)
-    .reduce((sum, tx) => sum + Math.abs(parseFloat(tx.amount)), 0)
+  // 4) Al betaald deze maand (vaste lasten)
+  const recurringKeys = new Set(recurringItems.map(r => r.merchant_key))
 
-  // Welke vaste lasten moeten nog betaald worden deze maand?
-  const stillToPay = fixedExpenses
-    .filter(item => item.dayOfMonth > currentDay)
-    .reduce((sum, item) => sum + item.amount, 0)
+  const { data: paidTx } = await supabase
+    .from('transactions')
+    .select('merchant_key, amount')
+    .eq('user_id', userId)
+    .lt('amount', 0)
+    .gte('transaction_date', startOfMonth)
+    .in('merchant_key', [...recurringKeys])
 
-  const totalFixedThisMonth = fixedExpenses.reduce((sum, item) => sum + item.amount, 0)
+  const alreadyPaid = (paidTx ?? [])
+    .reduce((s, tx) => s + Math.abs(Number(tx.amount)), 0)
 
-  // Dagen tot salaris
-  const daysUntilSalary = salaryDay >= currentDay
-    ? salaryDay - currentDay
-    : (30 - currentDay) + salaryDay
+  // 5) Nog te betalen (vóór salarisdatum)
+  const stillToPay = recurringItems
+    .filter(r => !isPaidThisMonth(r.merchant_key, paidTx ?? []) && r.dayOfMonth < salaryDate)
+    .reduce((s, r) => s + r.amount, 0)
 
-  // Vrije ruimte = inkomen - vaste lasten - al gespaard
-  const savedThisMonth = transactions
-    .filter(tx => tx.transaction_date >= startOfMonth && tx.category === 'sparen')
-    .reduce((sum, tx) => sum + Math.abs(parseFloat(tx.amount)), 0)
+  const totalFixed = recurringItems.reduce((s, r) => s + r.amount, 0)
 
-  const projectedFreeSpace = monthlyIncome - totalFixedThisMonth - savedThisMonth
-  const remainingFreeSpace = projectedFreeSpace - paidThisMonth + totalFixedThisMonth - stillToPay
+  const daysUntilSalary = salaryDate >= currentDay
+    ? salaryDate - currentDay
+    : (new Date(today.getFullYear(), today.getMonth() + 1, salaryDate).getDate())
 
-  // Risk level
-  const riskLevel = remainingFreeSpace < 0 ? 'danger'
-    : remainingFreeSpace < 200 ? 'caution'
+  // 6) Vrije ruimte
+  const projectedFreeSpace = currentBalance - stillToPay
+
+  const riskLevel = projectedFreeSpace < 0 ? 'danger'
+    : projectedFreeSpace < 200 ? 'caution'
     : 'safe'
 
-  // Genereer signalen
+  // 7) Signalen
   const signals = generateSignals({
-    remainingFreeSpace,
+    projectedFreeSpace,
     stillToPay,
     daysUntilSalary,
-    paidThisMonth,
-    monthlyIncome,
-    fixedExpenses,
-    transactions,
-    startOfMonth,
+    recurringItems,
+    currentDay,
   })
 
-  // Sla signals op in DB
-  if (signals.length > 0) {
-    await supabase.from('cashflow_events').upsert(
-      signals.map(s => ({
-        user_id: userId,
-        event_type: s.type,
-        title: s.title,
-        description: s.description,
-        severity: s.severity,
-        amount: s.amount ?? null,
-        projected_date: s.date ?? null,
-        is_read: false,
-      })),
-      { onConflict: 'user_id,event_type' }
-    )
-  }
-
-  // Sla recurring items op
-  await supabase.from('recurring_items').upsert(
-    fixedExpenses.map(r => ({
-      user_id: userId,
-      description: r.description,
-      amount: r.amount,
-      category: r.category,
-      day_of_month: r.dayOfMonth,
-      confidence: r.confidence,
-      last_seen: r.lastSeen,
-    })),
-    { onConflict: 'user_id,description' }
-  )
-
   return {
-    currentBalance: monthlyIncome - paidThisMonth,
+    currentBalance,
     projectedFreeSpace,
-    salaryExpected: monthlyIncome,
-    salaryDate: salaryDay,
-    fixedExpensesThisMonth: totalFixedThisMonth,
-    alreadyPaid: paidThisMonth,
+    salaryExpected,
+    salaryDate,
+    fixedExpensesThisMonth: totalFixed,
+    alreadyPaid,
     stillToPay,
     daysUntilSalary,
     riskLevel,
@@ -218,89 +252,57 @@ export async function projectCashflow(
   }
 }
 
+function isPaidThisMonth(
+  merchantKey: string,
+  paidTx: { merchant_key: string | null }[]
+): boolean {
+  return paidTx.some(tx => tx.merchant_key === merchantKey)
+}
+
 function generateSignals(data: {
-  remainingFreeSpace: number
+  projectedFreeSpace: number
   stillToPay: number
   daysUntilSalary: number
-  paidThisMonth: number
-  monthlyIncome: number
-  fixedExpenses: RecurringItem[]
-  transactions: { amount: string; category: string; transaction_date: string; description: string }[]
-  startOfMonth: string
+  recurringItems: RecurringItem[]
+  currentDay: number
 }): Signal[] {
   const signals: Signal[] = []
 
-  // Signaal: vrije ruimte kritiek laag
-  if (data.remainingFreeSpace < 0) {
+  if (data.projectedFreeSpace < 0) {
     signals.push({
       type: 'cashflow_negative',
-      title: 'Uitgaven overschrijden inkomen',
-      description: `Je vrije ruimte is negatief (€${Math.abs(data.remainingFreeSpace).toFixed(0)}). Er komen nog vaste lasten aan van €${data.stillToPay.toFixed(0)}.`,
+      title: 'Saldo dekt vaste lasten niet',
+      description: `Je hebt €${Math.abs(data.projectedFreeSpace).toFixed(0)} tekort voor vaste lasten vóór je salaris.`,
       severity: 'danger',
-      amount: data.remainingFreeSpace,
+      amount: data.projectedFreeSpace,
     })
-  } else if (data.remainingFreeSpace < 200) {
+  } else if (data.projectedFreeSpace < 200) {
     signals.push({
       type: 'cashflow_low',
-      title: 'Krap aan het einde van de maand',
-      description: `Je hebt nog €${data.remainingFreeSpace.toFixed(0)} vrij na vaste lasten. Houd uitgaven in de gaten.`,
+      title: 'Weinig buffer tot salaris',
+      description: `Na vaste lasten blijft er €${data.projectedFreeSpace.toFixed(0)} over. Houd uitgaven in de gaten.`,
       severity: 'warning',
-      amount: data.remainingFreeSpace,
+      amount: data.projectedFreeSpace,
     })
   }
 
-  // Signaal: grote vaste last aankomend
-  const upcomingLarge = data.fixedExpenses.filter(r => r.amount > 50 && r.dayOfMonth > new Date().getDate())
-  if (upcomingLarge.length > 0) {
-    const next = upcomingLarge[0]
-    const daysUntil = next.dayOfMonth - new Date().getDate()
-    if (daysUntil <= 5) {
-      signals.push({
-        type: 'upcoming_fixed_expense',
-        title: `${next.description} wordt binnenkort afgeschreven`,
-        description: `Over ${daysUntil} dag${daysUntil !== 1 ? 'en' : ''} wordt €${next.amount.toFixed(0)} afgeschreven voor ${next.description}.`,
-        severity: 'info',
-        amount: next.amount,
-        date: new Date(new Date().getFullYear(), new Date().getMonth(), next.dayOfMonth).toISOString().split('T')[0],
-      })
-    }
-  }
-
-  // Signaal: eten & drinken boven gemiddelde
-  const eetUitgaven = data.transactions
-    .filter(tx => tx.transaction_date >= data.startOfMonth && tx.category === 'eten & drinken')
-    .reduce((sum, tx) => sum + Math.abs(parseFloat(tx.amount)), 0)
-
-  if (eetUitgaven > 300) {
+  // Grote last in de komende 3 dagen
+  const soonLarge = data.recurringItems.find(r =>
+    r.amount > 100 &&
+    r.dayOfMonth > data.currentDay &&
+    r.dayOfMonth - data.currentDay <= 3
+  )
+  if (soonLarge) {
     signals.push({
-      type: 'category_overspend',
-      title: 'Eten & drinken loopt op',
-      description: `Je hebt al €${eetUitgaven.toFixed(0)} uitgegeven aan eten & drinken deze maand — meer dan gemiddeld.`,
+      type: 'upcoming_large_expense',
+      title: `${soonLarge.description} over ${soonLarge.dayOfMonth - data.currentDay} dag(en)`,
+      description: `€${soonLarge.amount.toFixed(0)} wordt binnenkort afgeschreven.`,
       severity: 'info',
-      amount: eetUitgaven,
+      amount: soonLarge.amount,
     })
   }
 
   return signals
-}
-
-function detectSalaryDay(incomeTransactions: { transaction_date: string; amount: string }[]): number {
-  if (incomeTransactions.length === 0) return 25
-  const days = incomeTransactions.map(tx => new Date(tx.transaction_date).getDate())
-  const counts: Record<number, number> = {}
-  days.forEach(d => { counts[d] = (counts[d] ?? 0) + 1 })
-  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1])
-  return sorted.length > 0 ? parseInt(sorted[0][0]) : 25
-}
-
-function normalizeDescription(desc: string): string {
-  return desc.toLowerCase()
-    .replace(/\d{6,}/g, '')    // verwijder lange nummers
-    .replace(/\d{2}-\d{2}/g, '') // verwijder datums
-    .replace(/[^a-z\s]/g, '')   // alleen letters
-    .replace(/\s+/g, ' ')
-    .trim()
-    .substring(0, 25)
 }
 
 function emptyProjection(): CashflowProjection {

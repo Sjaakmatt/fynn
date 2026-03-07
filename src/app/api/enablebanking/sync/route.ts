@@ -2,17 +2,17 @@
 //
 // Resumable transaction sync with Enable Banking.
 //
-// Key improvements:
-// 1. MAX_PAGES_PER_CALL = 30 (~1500 tx) - stays within Vercel timeout
-// 2. Upserts every 5 pages - crash-safe
-// 3. Saves continuation_key to bank_accounts - resumable across calls
-// 4. Frontend calls repeatedly until complete=true
-// 5. 422/400 errors caught gracefully
+// Key changes vs previous version:
+// - Categorization happens at INSERT time (not as separate post-process)
+// - merchant_map gets category immediately when seeded
+// - merchant_user_overrides respected during sync
+// - Existing merchant_map categories are preserved (onConflict won't overwrite)
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { ebFetch } from "@/lib/enablebanking";
 import { extractMerchant } from "@/lib/clean-description";
+import { categorizeTransaction } from "@/lib/categorize-engine";
 
 // -- Types -------------------------------------------------------------------
 
@@ -35,9 +35,9 @@ type EBTransactionsResponse = {
 
 // -- Config ------------------------------------------------------------------
 
-const MAX_PAGES_PER_CALL = 30;       // ~1500 tx, stays under ~40s runtime
-const UPSERT_EVERY_N_PAGES = 5;      // crash safety: upsert every 250 tx
-const PAGE_DELAY_MS = 300;            // rate limit protection
+const MAX_PAGES_PER_CALL = 30;
+const UPSERT_EVERY_N_PAGES = 5;
+const PAGE_DELAY_MS = 300;
 const MAX_HISTORY_MONTHS = 24;
 
 // -- Helpers -----------------------------------------------------------------
@@ -87,6 +87,33 @@ function cutoffDateISO(monthsBack: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+// -- Pre-load merchant categories for fast lookup ----------------------------
+
+async function loadMerchantCategories(supabase: any, userId: string): Promise<{
+  globalCategories: Map<string, string>;
+  userOverrides: Map<string, string>;
+}> {
+  const [{ data: merchantMap }, { data: overrides }] = await Promise.all([
+    supabase.from("merchant_map").select("merchant_key, category"),
+    supabase
+      .from("merchant_user_overrides")
+      .select("merchant_key, category")
+      .eq("user_id", userId),
+  ]);
+
+  const globalCategories = new Map<string, string>();
+  for (const m of merchantMap ?? []) {
+    if (m.category) globalCategories.set(m.merchant_key, m.category);
+  }
+
+  const userOverrides = new Map<string, string>();
+  for (const o of overrides ?? []) {
+    if (o.category) userOverrides.set(o.merchant_key, o.category);
+  }
+
+  return { globalCategories, userOverrides };
+}
+
 // -- Transform EB transactions into Supabase rows ----------------------------
 
 function transformTransactions(
@@ -94,10 +121,12 @@ function transformTransactions(
   userId: string,
   internalAccountId: string,
   ebAccountId: string,
-  cutoff: string
+  cutoff: string,
+  globalCategories: Map<string, string>,
+  userOverrides: Map<string, string>,
 ) {
   const rows: Array<Record<string, any>> = [];
-  const merchantSeeds = new Map<string, { merchant_key: string; merchant_name: string }>();
+  const merchantSeeds = new Map<string, { merchant_key: string; merchant_name: string; category: string }>();
 
   for (const t of fetched) {
     const booking = toISODate(t.booking_date) ?? toISODate(t.value_date);
@@ -117,6 +146,14 @@ function transformTransactions(
       [counterparty, remi].filter(Boolean).join(" \u2014 ").trim() || "Onbekend";
 
     const { merchantName, merchantKey } = extractMerchant(description, Math.abs(signedAmount));
+
+    // ── Categorisatie: user override > merchant_map > rule engine ──
+    const existingCategory = merchantKey
+      ? (userOverrides.get(merchantKey) ?? globalCategories.get(merchantKey) ?? null)
+      : null;
+
+    const category = categorizeTransaction(description, signedAmount, existingCategory);
+
     const entryRef = t.entry_reference ?? `${booking}:${description}`;
     const externalId = `eb:${ebAccountId}:${stableId(entryRef)}`;
 
@@ -131,10 +168,16 @@ function transformTransactions(
       external_id: externalId,
       merchant_name: merchantName,
       merchant_key: merchantKey,
+      category,
     });
 
+    // Seed merchant_map met category — maar alleen als we er nog geen hebben
     if (merchantKey && merchantName && !merchantSeeds.has(merchantKey)) {
-      merchantSeeds.set(merchantKey, { merchant_key: merchantKey, merchant_name: merchantName });
+      merchantSeeds.set(merchantKey, {
+        merchant_key: merchantKey,
+        merchant_name: merchantName,
+        category,
+      });
     }
   }
 
@@ -146,11 +189,12 @@ function transformTransactions(
 async function upsertBatch(
   supabase: any,
   rows: Array<Record<string, any>>,
-  merchantSeeds: Map<string, { merchant_key: string; merchant_name: string }>
+  merchantSeeds: Map<string, { merchant_key: string; merchant_name: string; category: string }>,
+  globalCategories: Map<string, string>,
 ): Promise<{ upserted: number; error: string | null }> {
   let upserted = 0;
 
-  // Deduplicate by external_id (last occurrence wins)
+  // Deduplicate by external_id
   const deduped = new Map<string, Record<string, any>>();
   for (const row of rows) {
     deduped.set(row.external_id, row);
@@ -169,20 +213,52 @@ async function upsertBatch(
     upserted += batch.length;
   }
 
-  // Seed merchant_map
-  const seeds = Array.from(merchantSeeds.values());
-  if (seeds.length > 0) {
+  // Seed merchant_map — alleen voor merchants die nog GEEN category hebben
+  const newSeeds = Array.from(merchantSeeds.values()).filter(
+    (s) => !globalCategories.has(s.merchant_key)
+  );
+
+  if (newSeeds.length > 0) {
     const { error: mmErr } = await supabase.from("merchant_map").upsert(
-      seeds.map((s) => ({
+      newSeeds.map((s) => ({
         merchant_key: s.merchant_key,
         merchant_name: s.merchant_name,
+        category: s.category !== 'overig' ? s.category : null, // null is beter dan overig voor toekomstige re-runs
         source: "imported",
-        confidence: 0.2,
+        confidence: s.category !== 'overig' ? 0.6 : 0.2,
         updated_at: new Date().toISOString(),
       })),
-      { onConflict: "merchant_key" }
+      { onConflict: "merchant_key", ignoreDuplicates: true }
     );
     if (mmErr) console.warn("[merchant_map seed] failed:", mmErr.message);
+    else console.log(`[Sync] Seeded ${newSeeds.length} new merchants to merchant_map`);
+  }
+
+  // Update bestaande merchants die category=null hebben met een betere categorie
+  const nullCategoryUpdates = Array.from(merchantSeeds.values()).filter(
+    (s) => globalCategories.has(s.merchant_key) === false || // niet in map
+      (globalCategories.get(s.merchant_key) === undefined) // of null
+  ).filter(s => s.category !== 'overig');
+
+  // Dit wordt al afgehandeld door de upsert hierboven met ignoreDuplicates: true
+  // Maar voor merchants die WEL bestaan maar category=null hebben, doen we een expliciete update
+  const existingNullMerchants = Array.from(merchantSeeds.values()).filter(
+    (s) => s.category !== 'overig' && globalCategories.has(s.merchant_key) && !globalCategories.get(s.merchant_key)
+  );
+
+  // Hmm, globalCategories filtert al op m.category truthy, dus dit scenario kan niet.
+  // Het echte probleem is merchants die in DB staan met category=null maar niet in onze Map.
+  // Die worden al door de ignoreDuplicates=true NIET overschreven.
+  // We moeten die apart updaten:
+  if (existingNullMerchants.length > 0) {
+    for (const s of existingNullMerchants) {
+      await supabase
+        .from("merchant_map")
+        .update({ category: s.category, confidence: 0.6, updated_at: new Date().toISOString() })
+        .eq("merchant_key", s.merchant_key)
+        .is("category", null);
+    }
+    console.log(`[Sync] Updated ${existingNullMerchants.length} merchants with null category`);
   }
 
   return { upserted, error: null };
@@ -249,6 +325,9 @@ export async function POST(request: NextRequest) {
   if (!accounts || accounts.length === 0) {
     return NextResponse.json({ error: "No EnableBanking accounts found" }, { status: 400 });
   }
+
+  // -- Pre-load merchant categories for this user ----------------------------
+  const { globalCategories, userOverrides } = await loadMerchantCategories(supabase, user.id);
 
   const cutoff = cutoffDateISO(MAX_HISTORY_MONTHS);
 
@@ -319,19 +398,20 @@ export async function POST(request: NextRequest) {
       } catch (err: any) {
         const msg = err?.message ?? "";
 
-        // 422/400 = end of available data, not a real error
         if (msg.includes("422") || msg.includes("400")) {
           console.warn(`[Sync] ${iban} -- ${msg.includes("422") ? "422" : "400"} on page ${page + 1}, stopping. ${accountFetched} tx so far.`);
           accountComplete = true;
           break;
         }
 
-        // Real error: save progress and bail
         console.error(`[Sync] ${iban} -- error on page ${page + 1}:`, msg);
 
         if (pendingTx.length > 0) {
-          const { rows, merchantSeeds } = transformTransactions(pendingTx, user.id, internalAccountId, ebAccountId, cutoff);
-          const result = await upsertBatch(supabase, rows, merchantSeeds);
+          const { rows, merchantSeeds } = transformTransactions(
+            pendingTx, user.id, internalAccountId, ebAccountId, cutoff,
+            globalCategories, userOverrides
+          );
+          const result = await upsertBatch(supabase, rows, merchantSeeds, globalCategories);
           accountUpserted += result.upserted;
         }
 
@@ -364,11 +444,21 @@ export async function POST(request: NextRequest) {
       // Intermediate upsert every N pages
       if (page % UPSERT_EVERY_N_PAGES === 0 && pendingTx.length > 0) {
         console.log(`[Sync] ${iban} -- intermediate upsert at page ${page} (${pendingTx.length} tx)`);
-        const { rows, merchantSeeds } = transformTransactions(pendingTx, user.id, internalAccountId, ebAccountId, cutoff);
-        const result = await upsertBatch(supabase, rows, merchantSeeds);
+        const { rows, merchantSeeds } = transformTransactions(
+          pendingTx, user.id, internalAccountId, ebAccountId, cutoff,
+          globalCategories, userOverrides
+        );
+        const result = await upsertBatch(supabase, rows, merchantSeeds, globalCategories);
         if (result.error) return NextResponse.json({ error: result.error }, { status: 500 });
         accountUpserted += result.upserted;
         pendingTx = [];
+
+        // Update local category cache met nieuwe merchants
+        for (const [key, seed] of merchantSeeds) {
+          if (seed.category && seed.category !== 'overig') {
+            globalCategories.set(key, seed.category);
+          }
+        }
       }
 
       await new Promise((r) => setTimeout(r, PAGE_DELAY_MS));
@@ -377,10 +467,20 @@ export async function POST(request: NextRequest) {
     // -- Final upsert --------------------------------------------------------
 
     if (pendingTx.length > 0) {
-      const { rows, merchantSeeds } = transformTransactions(pendingTx, user.id, internalAccountId, ebAccountId, cutoff);
-      const result = await upsertBatch(supabase, rows, merchantSeeds);
+      const { rows, merchantSeeds } = transformTransactions(
+        pendingTx, user.id, internalAccountId, ebAccountId, cutoff,
+        globalCategories, userOverrides
+      );
+      const result = await upsertBatch(supabase, rows, merchantSeeds, globalCategories);
       if (result.error) return NextResponse.json({ error: result.error }, { status: 500 });
       accountUpserted += result.upserted;
+
+      // Update cache
+      for (const [key, seed] of merchantSeeds) {
+        if (seed.category && seed.category !== 'overig') {
+          globalCategories.set(key, seed.category);
+        }
+      }
     }
 
     // -- Save or clear continuation key --------------------------------------
@@ -407,28 +507,27 @@ export async function POST(request: NextRequest) {
   const duration = Date.now() - startTime;
   console.log(`[Sync] Done in ${duration}ms | ${totalFetched} fetched | ${totalUpserted} upserted | complete=${allComplete}`);
 
-  // ── Auto-postprocess: categorize + recurring detect ───────────────────────
+  // ── Post-process: recurring detect + income detect ────────────────────────
+  // Categorisatie is nu al gedaan tijdens sync, dus /api/categorize is niet meer nodig
   if (allComplete && totalUpserted > 0) {
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
       const headers = {
         "Content-Type": "application/json",
         Cookie: request.headers.get("cookie") ?? "",
-      }
+      };
 
-      const [catRes, recRes, incRes] = await Promise.all([
-        fetch(`${baseUrl}/api/categorize`, { method: "POST", headers }),
+      const [recRes, incRes] = await Promise.all([
         fetch(`${baseUrl}/api/recurring/detect`, { method: "POST", headers }),
-        fetch(`${baseUrl}/api/income/detect`, { method: "POST", headers }),  // ← nieuw
-      ])
+        fetch(`${baseUrl}/api/income/detect`, { method: "POST", headers }),
+      ]);
 
-      const catData = await catRes.json().catch(() => ({}))
-      const recData = await recRes.json().catch(() => ({}))
-      const incData = await incRes.json().catch(() => ({}))
+      const recData = await recRes.json().catch(() => ({}));
+      const incData = await incRes.json().catch(() => ({}));
 
-      console.log(`[Sync] Categorize: ${catData.categorized ?? 0} | Recurring: ${recData.updated ?? 0} | Income: ${incData.updated ?? 0}`)
+      console.log(`[Sync] Recurring: ${recData.updated ?? 0} | Income: ${incData.updated ?? 0}`);
     } catch (e) {
-      console.warn("[Sync] Post-processing mislukt (non-blocking):", e)
+      console.warn("[Sync] Post-processing mislukt (non-blocking):", e);
     }
   }
 

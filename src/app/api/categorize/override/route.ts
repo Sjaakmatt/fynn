@@ -1,3 +1,4 @@
+// src/app/api/categorize/override/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { extractMerchant } from "@/lib/clean-description";
@@ -13,7 +14,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
 
-    // 1) Fetch tx: we need merchant_key (or we compute it)
+    // 1) Fetch tx
     const { data: tx, error: txErr } = await supabase
       .from("transactions")
       .select("id, description, amount, merchant_key, merchant_name")
@@ -36,7 +37,7 @@ export async function PATCH(request: NextRequest) {
       merchantName = ex.merchantName;
     }
 
-    // 2) Update transaction category (+ backfill merchant fields if needed)
+    // 2) Update transaction category
     const { error: upTxErr } = await supabase
       .from("transactions")
       .update({
@@ -49,8 +50,7 @@ export async function PATCH(request: NextRequest) {
 
     if (upTxErr) return NextResponse.json({ error: upTxErr.message }, { status: 500 });
 
-    // 3) Save override for future (merchant_key-based)
-    // 3) Save override for future (single source of truth)
+    // 3) Sla override op per user — dit wint altijd van merchant_map bij toekomstige categorisaties
     if (merchantKey) {
       const { error: ovErr } = await supabase
         .from("merchant_user_overrides")
@@ -67,25 +67,9 @@ export async function PATCH(request: NextRequest) {
       if (ovErr) return NextResponse.json({ error: ovErr.message }, { status: 500 });
     }
 
-    // 4) Also update global merchant_map category (fast-path for future tx)
-    // Non-blocking is ok, but for "perfect" we fail hard if this can't write.
-    if (merchantKey) {
-      const { error: mmErr } = await supabase
-        .from("merchant_map")
-        .upsert(
-          {
-            merchant_key: merchantKey,
-            merchant_name: merchantName ?? "Onbekend",
-            category,
-            source: "user_override",
-            confidence: 0.9,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "merchant_key" }
-        );
-
-      if (mmErr) return NextResponse.json({ error: mmErr.message }, { status: 500 });
-    }
+    // merchant_map wordt NIET geüpdatet vanuit user overrides —
+    // dat is een globale tabel en mag niet door individueel gebruikersgedrag worden beïnvloed.
+    // De categorize engine beheert merchant_map op systeem-niveau.
 
     return NextResponse.json({ success: true, merchant_key: merchantKey });
   } catch (error) {

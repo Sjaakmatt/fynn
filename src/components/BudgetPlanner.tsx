@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 
 interface BudgetCategory {
   category: string
@@ -34,67 +34,80 @@ export default function BudgetPlanner() {
   const [newCategory, setNewCategory] = useState('')
   const [newBudget, setNewBudget] = useState('')
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const [refreshKey, setRefreshKey] = useState(0)
-
-  useEffect(() => {
-    // Check bij mount of refresh nodig is
-    if (sessionStorage.getItem('budgetNeedsRefresh') === 'true') {
-      sessionStorage.removeItem('budgetNeedsRefresh')
-      loadBudget()
-      return
+  const loadBudget = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/budget')
+      if (!res.ok) throw new Error('Kon budget niet laden')
+      const data = await res.json()
+      if (data.budget) setBudget(data.budget)
+      if (data.uitgavenDezeMaand) setUitgaven(data.uitgavenDezeMaand)
+      if (data.totalInkomen) setTotalInkomen(data.totalInkomen)
+    } catch (err) {
+      setError('Kon budget niet laden. Probeer het opnieuw.')
+    } finally {
+      setLoading(false)
     }
-    loadBudget()
-  }, [refreshKey])
-
-  useEffect(() => {
-    const handler = () => setRefreshKey(k => k + 1)
-    window.addEventListener('transactionUpdated', handler)
-    return () => window.removeEventListener('transactionUpdated', handler)
   }, [])
 
-  async function loadBudget() {
-    setLoading(true)
-    const res = await fetch('/api/ai/budget')
-    const data = await res.json()
-    if (data.budget) setBudget(data.budget)
-    if (data.uitgavenDezeMaand) setUitgaven(data.uitgavenDezeMaand)
-    if (data.totalInkomen) setTotalInkomen(data.totalInkomen)
-    setLoading(false)
-  }
+  useEffect(() => {
+    loadBudget()
+  }, [loadBudget])
+
+  useEffect(() => {
+    const handler = () => loadBudget()
+    window.addEventListener('transactionUpdated', handler)
+    return () => window.removeEventListener('transactionUpdated', handler)
+  }, [loadBudget])
 
   async function generateBudget() {
     setGenerating(true)
-    const res = await fetch('/api/ai/budget', { method: 'POST' })
-    const data = await res.json()
-    if (data.categories) {
-      setBudget({ categories: data.categories, updated_at: new Date().toISOString() })
-      if (data.totalInkomen) setTotalInkomen(data.totalInkomen)
+    setError(null)
+    try {
+      const res = await fetch('/api/budget', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error ?? 'Kon budget niet genereren')
+        return
+      }
+      if (data.categories) {
+        setBudget({ categories: data.categories, updated_at: new Date().toISOString() })
+        if (data.totalInkomen) setTotalInkomen(data.totalInkomen)
+      }
+    } catch (err) {
+      setError('Kon budget niet genereren. Probeer het opnieuw.')
+    } finally {
+      setGenerating(false)
     }
-    setGenerating(false)
   }
 
   async function saveBudget(categories: BudgetCategory[]) {
     setSaving(true)
     try {
-        await fetch('/api/ai/budget', {
+      const res = await fetch('/api/budget', {
         method: 'PATCH',
-        headers: { 
-            'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ categories })
-        })
-    } catch (error) {
-        console.error('Save error:', error)
+        body: JSON.stringify({ categories }),
+      })
+      if (!res.ok) throw new Error('Save failed')
+    } catch (err) {
+      setError('Wijziging kon niet opgeslagen worden.')
+    } finally {
+      setSaving(false)
     }
-    setSaving(false)
-    }
+  }
 
   async function updateBudgetAmount(category: string, newAmount: number) {
-    if (!budget) return
+    if (!budget || isNaN(newAmount) || newAmount < 0) {
+      setEditingId(null)
+      return
+    }
     const updated = budget.categories.map(c =>
-      c.category === category ? { ...c, budget: newAmount } : c
+      c.category === category ? { ...c, budget: Math.round(newAmount) } : c
     )
     setBudget({ ...budget, categories: updated })
     setEditingId(null)
@@ -111,11 +124,17 @@ export default function BudgetPlanner() {
   async function addCategory() {
     if (!newCategory.trim() || !newBudget || !budget) return
     const cat = newCategory.toLowerCase().trim()
+    if (budget.categories.some(c => c.category === cat)) {
+      setError(`"${cat}" bestaat al in je budget.`)
+      return
+    }
+    const amount = parseFloat(newBudget)
+    if (isNaN(amount) || amount <= 0) return
     const updated = [...budget.categories, {
       category: cat,
-      budget: parseFloat(newBudget),
+      budget: Math.round(amount),
       icon: AVAILABLE_ICONS[cat] ?? '📦',
-      tip: ''
+      tip: '',
     }]
     setBudget({ ...budget, categories: updated })
     setNewCategory('')
@@ -128,6 +147,11 @@ export default function BudgetPlanner() {
   const totalUitgegeven = Object.values(uitgaven).reduce((sum, v) => sum + v, 0)
   const resterendBudget = totalBudget - totalUitgegeven
   const resterendInkomen = totalInkomen - totalBudget
+
+  // Bereken dag-voortgang voor context
+  const today = new Date()
+  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
+  const dayProgress = today.getDate() / daysInMonth
 
   if (loading) return (
     <div className="rounded-2xl p-8 flex items-center justify-center"
@@ -147,8 +171,14 @@ export default function BudgetPlanner() {
         Fynn analyseert je transactiehistorie en maakt een persoonlijk budget.
       </p>
       <p className="text-xs mb-6 px-6" style={{ color: 'var(--muted)' }}>
-        Gebaseerd op: je gemiddelde uitgaven per categorie, je inkomen, en een gezonde spaarquote van minimaal 10%.
+        Gebaseerd op je mediaan uitgaven per categorie, je inkomen, en een spaarquote van minimaal 10%.
       </p>
+      {error && (
+        <div className="mb-4 rounded-xl p-3 text-xs text-left"
+          style={{ backgroundColor: 'rgba(239,68,68,0.08)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>
+          {error}
+        </div>
+      )}
       <button
         onClick={generateBudget}
         disabled={generating}
@@ -163,13 +193,22 @@ export default function BudgetPlanner() {
   return (
     <div className="space-y-4">
 
+      {/* Error banner */}
+      {error && (
+        <div className="rounded-2xl p-4 text-sm flex items-center justify-between"
+          style={{ backgroundColor: 'rgba(239,68,68,0.08)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="ml-2 font-bold">×</button>
+        </div>
+      )}
+
       {/* Overzicht header */}
       <div className="rounded-2xl p-5"
         style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
         <div className="flex items-start justify-between mb-4">
           <div>
             <h3 className="font-semibold text-sm" style={{ color: 'var(--text)' }}>
-              Maandbudget {new Date().toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' })}
+              Maandbudget {today.toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' })}
             </h3>
             <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
               Gebaseerd op je transactiehistorie · Klik op een bedrag om aan te passen
@@ -183,7 +222,7 @@ export default function BudgetPlanner() {
               className="text-xs px-3 py-1.5 rounded-lg text-white disabled:opacity-50"
               style={{ backgroundColor: 'var(--brand)' }}
             >
-              {generating ? '...' : '↻ Hergeneer'}
+              {generating ? '...' : '↻ Hergenereer'}
             </button>
           </div>
         </div>
@@ -206,7 +245,7 @@ export default function BudgetPlanner() {
           </div>
           <div className="rounded-xl p-3" style={{ backgroundColor: 'var(--tab-bg)' }}>
             <p className="text-xs mb-1" style={{ color: 'var(--muted)' }}>
-              {resterendInkomen >= 0 ? 'Vrij te besteden' : 'Over budget'}
+              {resterendInkomen >= 0 ? 'Niet ingepland' : 'Over budget'}
             </p>
             <p className="text-lg font-bold" style={{
               color: resterendInkomen < 0 ? '#EF4444' : resterendInkomen < 100 ? '#F59E0B' : '#1A3A2A'
@@ -235,7 +274,7 @@ export default function BudgetPlanner() {
                 Voortgang deze maand
               </h3>
               <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
-                €{totalUitgegeven.toFixed(0)} uitgegeven van €{totalBudget.toFixed(0)} budget
+                €{totalUitgegeven.toFixed(0)} uitgegeven van €{totalBudget.toFixed(0)} · dag {today.getDate()} van {daysInMonth}
               </p>
             </div>
             <p className="text-sm font-semibold" style={{
@@ -253,6 +292,8 @@ export default function BudgetPlanner() {
             const pct = cat.budget > 0 ? Math.min((spent / cat.budget) * 100, 100) : 0
             const overBudget = spent > cat.budget
             const almostOver = !overBudget && pct > 80
+            // Geeft context: als je op dag 10 van 30 al 60% hebt uitgegeven, loop je voor
+            const paceWarning = !overBudget && !almostOver && pct > (dayProgress * 100 + 15)
             const isEditing = editingId === cat.category
 
             return (
@@ -275,7 +316,12 @@ export default function BudgetPlanner() {
                           Bijna op — nog €{(cat.budget - spent).toFixed(0)}
                         </p>
                       )}
-                      {cat.tip && !overBudget && !almostOver && (
+                      {paceWarning && (
+                        <p className="text-xs" style={{ color: '#F59E0B' }}>
+                          Hoger tempo dan gemiddeld
+                        </p>
+                      )}
+                      {cat.tip && !overBudget && !almostOver && !paceWarning && (
                         <p className="text-xs" style={{ color: 'var(--muted)' }}>
                           {cat.tip}
                         </p>
@@ -291,11 +337,12 @@ export default function BudgetPlanner() {
                       {isEditing ? (
                         <input
                           type="number"
-                          defaultValue={cat.budget ?? 0}
+                          defaultValue={cat.budget}
                           autoFocus
-                          onBlur={e => updateBudgetAmount(cat.category, parseFloat(e.target.value) || cat.budget)}
+                          min={0}
+                          onBlur={e => updateBudgetAmount(cat.category, parseFloat(e.target.value))}
                           onKeyDown={e => {
-                            if (e.key === 'Enter') updateBudgetAmount(cat.category, parseFloat((e.target as HTMLInputElement).value) || cat.budget)
+                            if (e.key === 'Enter') updateBudgetAmount(cat.category, parseFloat((e.target as HTMLInputElement).value))
                             if (e.key === 'Escape') setEditingId(null)
                           }}
                           className="w-20 text-right text-sm font-semibold rounded-lg px-2 py-1 outline-none"
@@ -308,7 +355,7 @@ export default function BudgetPlanner() {
                           style={{ color: 'var(--text)' }}
                           title="Klik om aan te passen"
                         >
-                          €{(cat.budget ?? 0).toFixed(0)}
+                          €{cat.budget.toFixed(0)}
                         </button>
                       )}
                     </div>
@@ -329,7 +376,7 @@ export default function BudgetPlanner() {
                     className="h-full rounded-full transition-all duration-700"
                     style={{
                       width: `${pct}%`,
-                      backgroundColor: overBudget ? '#EF4444' : almostOver ? '#F59E0B' : '#1A3A2A'
+                      backgroundColor: overBudget ? '#EF4444' : almostOver ? '#F59E0B' : '#1A3A2A',
                     }}
                   />
                 </div>
@@ -349,16 +396,20 @@ export default function BudgetPlanner() {
                 placeholder="Categorie (bijv. vakantie)"
                 className="flex-1 rounded-xl px-3 py-2 text-sm outline-none"
                 style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--text)', border: '1px solid var(--border)' }}
+                onKeyDown={e => { if (e.key === 'Enter') document.getElementById('budget-new-amount')?.focus() }}
               />
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs" style={{ color: 'var(--muted)' }}>€</span>
                 <input
+                  id="budget-new-amount"
                   type="number"
                   value={newBudget}
                   onChange={e => setNewBudget(e.target.value)}
                   placeholder="0"
+                  min={0}
                   className="w-24 rounded-xl pl-6 pr-3 py-2 text-sm outline-none"
                   style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--text)', border: '1px solid var(--border)' }}
+                  onKeyDown={e => { if (e.key === 'Enter') addCategory() }}
                 />
               </div>
               <button
@@ -369,7 +420,7 @@ export default function BudgetPlanner() {
                 ✓
               </button>
               <button
-                onClick={() => setShowAddCategory(false)}
+                onClick={() => { setShowAddCategory(false); setNewCategory(''); setNewBudget('') }}
                 className="px-3 py-2 rounded-xl text-sm"
                 style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--muted)' }}
               >

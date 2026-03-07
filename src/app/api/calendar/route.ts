@@ -224,6 +224,9 @@ export async function GET(request: NextRequest) {
       const isVar = userOv?.is_variable ?? global?.is_variable ?? false;
       if (isVar) continue;
 
+      const category = userOv?.category ?? global?.category ?? null
+      if (category === 'sparen' || category === 'inkomen' || category === 'intern') continue
+
       // user can force recurring
       const recurring = userOv?.recurring_hint ?? global?.recurring_hint ?? false;
       const quarterly = recurring ? false : group.quarterlyHint; // keep your old quarterly hint as fallback (we refine later)
