@@ -64,7 +64,7 @@ function SyncContent() {
       // Stap 1: Transacties ophalen
       setStepStatus('transactions', 'active')
       setCurrentStep(0)
-      const provider = searchParams.get('provider')
+      const provider = searchParams.get('provider') ?? process.env.NEXT_PUBLIC_BANKING_PROVIDER ?? 'plaid'
 
       const txRes = provider === 'enablebanking'
         ? await fetch('/api/enablebanking/sync', {
@@ -72,7 +72,10 @@ function SyncContent() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ mode: 'merge' }),
           })
-        : await fetch('/api/sync/transactions', { method: 'POST' })
+        : await fetch('/api/plaid/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          })
 
       if (!txRes.ok) throw new Error('Transacties ophalen mislukt')
       setStepStatus('transactions', 'done')

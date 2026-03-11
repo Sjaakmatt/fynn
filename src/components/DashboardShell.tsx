@@ -72,13 +72,21 @@ export default function DashboardShell({
   const [showBankModal, setShowBankModal] = useState(false)
   const [showBreakdown, setShowBreakdown] = useState(false)
 
+  const [isJustConnected, setIsJustConnected] = useState(
+  searchParams.get('connected') === 'true'
+)
+
   useEffect(() => {
-    if (searchParams.get('connected') === 'true') {
+    if (isJustConnected) {
       router.replace('/dashboard')
-      setShowSavingsSetup(true)
-      setTimeout(() => router.refresh(), 2000)
+      // Geef server component tijd om data op te halen
+      const timer = setTimeout(() => {
+        router.refresh()
+        setIsJustConnected(false)
+      }, 2000)
+      return () => clearTimeout(timer)
     }
-  }, [searchParams, router])
+  }, [isJustConnected, router])
 
   const firstName = user.firstName ?? user.email?.split('@')[0] ?? 'daar'
   const hasData = accounts.length > 0
@@ -113,6 +121,15 @@ export default function DashboardShell({
               )}
               <ThemeToggle />
             </div>
+            <button
+              onClick={() => router.push('/account')}
+              className="w-8 h-8 rounded-lg flex items-center justify-center"
+              style={{ backgroundColor: 'var(--tab-bg)' }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--muted)' }}>
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+              </svg>
+            </button>
           </div>
           {hasData && (
             <div className="max-w-2xl mx-auto px-4 pb-3">
@@ -132,8 +149,22 @@ export default function DashboardShell({
             />
           )}
 
-          {!hasData && !showSavingsSetup && (
+          {!hasData && !showSavingsSetup && !isJustConnected && (
             <OnboardingFlow userId={user.id} isPro={isPro} />
+          )}
+
+          {isJustConnected && !hasData && (
+            <div className="rounded-2xl p-8 text-center"
+              style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
+              <div className="animate-spin w-8 h-8 border-2 border-t-transparent rounded-full mx-auto mb-4"
+                style={{ borderColor: 'var(--brand)', borderTopColor: 'transparent' }} />
+              <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+                Dashboard wordt geladen...
+              </p>
+              <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
+                Je gegevens worden verwerkt
+              </p>
+            </div>
           )}
 
           <SubscriptionBanner

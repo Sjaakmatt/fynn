@@ -1,4 +1,11 @@
 // src/lib/clean-description.ts
+//
+// Merchant extraction & normalization engine.
+// Converts raw bank transaction descriptions into:
+// - merchantName: UI-friendly display name
+// - merchantKey:  stable, deterministic identity key for merchant_map
+//
+// ⚠️  Must work generically across all NL/BE bank formats (ING, Rabo, ABN, Bunq, KBC, etc.)
 
 type MerchantExtract = {
   merchantName: string;   // UI-friendly
@@ -7,63 +14,68 @@ type MerchantExtract = {
   channel?: "card" | "sepa" | "ideal" | "transfer" | "cash" | "unknown";
 };
 
-const KNOWN_NAMES: Record<string, string> = {
-  "netflix": "Netflix",
-  "spotify": "Spotify",
-  "apple services": "Apple Services",
-  "apple.com": "Apple",
-  "google": "Google",
-  "microsoft": "Microsoft",
-  "adobe": "Adobe",
-  "dropbox": "Dropbox",
-  "bol.com": "Bol.com",
-  "amazon": "Amazon",
-  "zalando": "Zalando",
-  "thuisbezorgd": "Thuisbezorgd",
-  "deliveroo": "Deliveroo",
-  "uber eats": "Uber Eats",
-  "uber": "Uber",
-  "tikkie": "Tikkie",
-  "albert heijn": "Albert Heijn",
-  "jumbo": "Jumbo",
-  "lidl": "Lidl",
-  "aldi": "Aldi",
-  "klarna": "Klarna",
-  "paypal": "PayPal",
-  "odido": "Odido",
-  "vodafone": "Vodafone",
-  "kpn": "KPN",
-  "ziggo": "Ziggo",
-  "vattenfall": "Vattenfall",
-  "delta energie": "Delta Energie",
-  "eneco": "Eneco",
-  "nuon": "Nuon",
-  "essent": "Essent",
-  "greenchoice": "Greenchoice",
-  "nationale-nederlanden": "Nationale-Nederlanden",
-  "nn ": "Nationale-Nederlanden",
-  "aegon": "Aegon",
-  "centraal beheer": "Centraal Beheer",
-  "interpolis": "Interpolis",
-  "abn amro bank": "ABN AMRO",
-  "abn amro": "ABN AMRO",
-  "rabobank": "Rabobank",
-  "ing bank": "ING",
-  "ingb": "ING",
-  "pwn ": "PWN",
-  "vitens": "Vitens",
-  "dunea": "Dunea",
-  "uwv": "UWV",
-  "svb": "SVB",
-  "belastingdienst": "Belastingdienst",
-  "duo ": "DUO",
-  "duo hoofdrekening": "DUO",
-  "gemeente": "Gemeente",
-  "hoogheemraadschap": "Hoogheemraadschap",
-  "wodify": "Wodify",
-  "crossfit": "CrossFit",
-  "mvmnt": "MVMNT Gym",
-};
+// ── KNOWN NAMES ────────────────────────────────────────────────
+// Keys are matched with includes() on lowercased description.
+// Order matters: longer/more specific keys should come first to prevent
+// shorter keys from matching prematurely (e.g. "nn verzekering" before "nn").
+//
+// ⚠️  Keys must be long enough to avoid false positives across
+//     thousands of users with diverse transaction descriptions.
+
+const KNOWN_NAMES: [string, string][] = [
+  // Specifiek → generiek volgorde
+  ["nationale-nederlanden", "Nationale-Nederlanden"],
+  ["nn verzekering", "Nationale-Nederlanden"],
+  ["albert heijn", "Albert Heijn"],
+  ["ah to go", "AH to go"],
+  ["abn amro bank", "ABN AMRO"],
+  ["abn amro", "ABN AMRO"],
+  ["ing bank", "ING"],
+  ["uber eats", "Uber Eats"],
+  ["apple services", "Apple Services"],
+  ["apple.com", "Apple"],
+  ["delta energie", "Delta Energie"],
+  ["centraal beheer", "Centraal Beheer"],
+  ["duo hoofdrekening", "DUO"],
+  // Generieke namen (korter, maar nog steeds uniek genoeg)
+  ["netflix", "Netflix"],
+  ["spotify", "Spotify"],
+  ["google", "Google"],
+  ["microsoft", "Microsoft"],
+  ["adobe", "Adobe"],
+  ["dropbox", "Dropbox"],
+  ["bol.com", "Bol.com"],
+  ["amazon", "Amazon"],
+  ["zalando", "Zalando"],
+  ["thuisbezorgd", "Thuisbezorgd"],
+  ["deliveroo", "Deliveroo"],
+  ["uber", "Uber"],
+  ["tikkie", "Tikkie"],
+  ["jumbo", "Jumbo"],
+  ["lidl", "Lidl"],
+  ["aldi", "Aldi"],
+  ["klarna", "Klarna"],
+  ["paypal", "PayPal"],
+  ["odido", "Odido"],
+  ["vodafone", "Vodafone"],
+  ["kpn", "KPN"],
+  ["ziggo", "Ziggo"],
+  ["vattenfall", "Vattenfall"],
+  ["eneco", "Eneco"],
+  ["essent", "Essent"],
+  ["greenchoice", "Greenchoice"],
+  ["aegon", "Aegon"],
+  ["interpolis", "Interpolis"],
+  ["rabobank", "Rabobank"],
+  ["vitens", "Vitens"],
+  ["dunea", "Dunea"],
+  ["uwv", "UWV"],
+  ["svb", "SVB"],
+  ["belastingdienst", "Belastingdienst"],
+  ["hoogheemraadschap", "Hoogheemraadschap"],
+  ["wodify", "Wodify"],
+  ["crossfit", "CrossFit"],
+];
 
 // -------------------------------
 // Public API
@@ -155,10 +167,12 @@ function extractNameCandidate(d: string): string {
 function cleanDisplayName(name: string, amount?: number): string {
   const base = formatName(name);
 
-  // Ambiguous merchant split examples (keep display logic here)
+  // Ambiguous merchant split — use absolute amount for comparison
+  // since transaction amounts can be negative (expenses) or positive (income)
   if (base === "ABN AMRO" && typeof amount === "number" && Number.isFinite(amount)) {
-    if (amount > 500) return "Hypotheek";
-    if (amount < 20) return "ABN AMRO Bankkosten";
+    const abs = Math.abs(amount);
+    if (abs > 500) return "Hypotheek";
+    if (abs < 20) return "ABN AMRO Bankkosten";
   }
 
   return base;
@@ -167,9 +181,9 @@ function cleanDisplayName(name: string, amount?: number): string {
 function formatName(name: string): string {
   if (!name) return "Onbekend";
 
-  // Known names mapping
+  // Known names mapping — uses ordered array for specificity
   const lower = name.toLowerCase();
-  for (const [key, value] of Object.entries(KNOWN_NAMES)) {
+  for (const [key, value] of KNOWN_NAMES) {
     if (lower.includes(key)) return value;
   }
 
@@ -204,7 +218,7 @@ function normalizeMerchantToken(input: string): string {
 
   // Replace separators with spaces
   s = s.replace(/[_/\\|]+/g, " ");
-  s = s.replace(/[*•·]+/g, " ");
+  s = s.replace(/[*\u2022\u00B7]+/g, " ");
   s = s.replace(/[^\p{L}\p{N}\s\-.&]+/gu, " "); // unicode letters/numbers
 
   // Remove obvious IDs / refs / long numbers
@@ -221,10 +235,12 @@ function normalizeMerchantToken(input: string): string {
 
 function applyKnownAliases(base: string): string {
   // Unify key variants to a canonical token (identity-level)
-  // Keep this small; it’s your “seed”.
+  // ⚠️  Patterns must be specific enough to avoid false positives.
+  //     E.g. \bah\b would match "ah" in "mahdi" — don't use it.
   const aliases: Array<[RegExp, string]> = [
     [/\bbol\.com\b/g, "bol"],
-    [/\balbert heijn\b|\bah\b/g, "albert heijn"],
+    [/\balbert heijn\b/g, "albert heijn"],
+    [/\bah to go\b/g, "albert heijn to go"],
     [/\bthuisbezorgd\b/g, "thuisbezorgd"],
     [/\bamazon\b/g, "amazon"],
     [/\bzalando\b/g, "zalando"],
@@ -239,6 +255,7 @@ function applyKnownAliases(base: string): string {
     [/\bgoogle\b/g, "google"],
     [/\bklarna\b/g, "klarna"],
     [/\bpaypal\b/g, "paypal"],
+    [/\buber eats\b/g, "uber eats"],
     [/\buber\b/g, "uber"],
     [/\bdeliveroo\b/g, "deliveroo"],
   ];

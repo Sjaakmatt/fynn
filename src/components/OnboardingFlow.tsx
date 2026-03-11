@@ -2,6 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import PlaidLinkButton from '@/components/plaid/PlaidLinkButton'
+
+const BANKING_PROVIDER = process.env.NEXT_PUBLIC_BANKING_PROVIDER ?? 'plaid'
 
 interface Props {
   userId: string
@@ -38,9 +41,19 @@ function BankSelector({ onSelect }: { onSelect: (bank: typeof BANKS[0]) => void 
 
   const filtered = BANKS.filter(b => b.country === filter)
 
+  if (BANKING_PROVIDER === 'plaid') {
+    return (
+      <PlaidLinkButton
+        className="w-full py-3 rounded-xl font-semibold text-sm"
+        style={{ backgroundColor: 'white', color: 'var(--brand)' }}
+      >
+        🏦 Bank koppelen
+      </PlaidLinkButton>
+    )
+  }
+
   return (
     <div className="space-y-3">
-      {/* Land toggle */}
       <div className="flex rounded-xl overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
         {(['NL', 'BE'] as const).map(country => (
           <button
@@ -57,7 +70,6 @@ function BankSelector({ onSelect }: { onSelect: (bank: typeof BANKS[0]) => void 
         ))}
       </div>
 
-      {/* Bank grid */}
       <div className="grid grid-cols-2 gap-2">
         {filtered.map(bank => (
           <button
@@ -149,20 +161,34 @@ export default function OnboardingFlow({ userId, isPro }: Props) {
 
         {/* Bank selectie */}
         <div className="px-6 pb-6 space-y-3">
-          <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>Selecteer je bank</p>
-          <div className="grid grid-cols-2 gap-2">
-            {BANKS.filter(b => b.country === 'NL').map(bank => (
-              <button
-                key={bank.name}
-                onClick={() => handleConnect(bank)}
-                disabled={loading}
-                className="py-2 px-3 rounded-xl text-sm font-medium text-left disabled:opacity-50 transition-all"
-                style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--text)', border: '1px solid var(--border)' }}
+          {BANKING_PROVIDER === 'plaid' ? (
+            <>
+              <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>Koppel je bank</p>
+              <PlaidLinkButton
+                className="w-full py-3 rounded-xl text-sm font-medium transition-all"
+                style={{ backgroundColor: 'var(--brand)', color: 'white' }}
               >
-                {bank.logo} {bank.name}
-              </button>
-            ))}
-          </div>
+                🏦 Bank koppelen
+              </PlaidLinkButton>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>Selecteer je bank</p>
+              <div className="grid grid-cols-2 gap-2">
+                {BANKS.filter(b => b.country === 'NL').map(bank => (
+                  <button
+                    key={bank.name}
+                    onClick={() => handleConnect(bank)}
+                    disabled={loading}
+                    className="py-2 px-3 rounded-xl text-sm font-medium text-left disabled:opacity-50 transition-all"
+                    style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--text)', border: '1px solid var(--border)' }}
+                  >
+                    {bank.logo} {bank.name}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
           <p className="text-center text-xs" style={{ color: 'var(--muted)' }}>
             🔒 PSD2 beveiligd · Alleen leestoegang · Nooit schrijftoegang
           </p>

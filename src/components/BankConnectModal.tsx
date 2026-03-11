@@ -1,6 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import PlaidLinkButton from '@/components/plaid/PlaidLinkButton'
+
+const BANKING_PROVIDER = process.env.NEXT_PUBLIC_BANKING_PROVIDER ?? 'plaid'
 
 const NL_BE_BANKS = [
   { name: 'ABN AMRO', country: 'NL' },
@@ -28,7 +31,7 @@ export default function BankConnectModal({ onClose }: Props) {
 
   const banks = NL_BE_BANKS.filter(b => b.country === filter)
 
-  function connect(bank: { name: string; country: string }) {
+  function connectEB(bank: { name: string; country: string }) {
     setLoading(bank.name)
     window.location.href = `/api/enablebanking/connect?bank=${encodeURIComponent(bank.name)}&country=${bank.country}`
   }
@@ -56,48 +59,72 @@ export default function BankConnectModal({ onClose }: Props) {
           </button>
         </div>
 
-        {/* Land filter */}
-        <div className="flex gap-1 p-1 rounded-lg mb-4" style={{ backgroundColor: 'var(--tab-bg)' }}>
-          {(['NL', 'BE'] as const).map(c => (
-            <button key={c} onClick={() => setFilter(c)}
-              className="flex-1 py-1.5 rounded-md text-xs font-medium transition-all"
+        {/* Provider: Plaid */}
+        {BANKING_PROVIDER === 'plaid' && (
+          <div className="space-y-4 mb-5">
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>
+              Selecteer je bank en log veilig in via Plaid.
+            </p>
+            <PlaidLinkButton
+              onSuccess={onClose}
+              className="w-full py-3 rounded-xl text-sm font-medium transition-all"
               style={{
-                backgroundColor: filter === c ? 'var(--tab-active)' : 'transparent',
-                color: filter === c ? 'var(--tab-active-text)' : 'var(--muted)',
-              }}>
-              {c === 'NL' ? '🇳🇱 Nederland' : '🇧🇪 België'}
-            </button>
-          ))}
-        </div>
+                backgroundColor: 'var(--brand)',
+                color: 'var(--button-text)',
+              }}
+            >
+              Bank koppelen
+            </PlaidLinkButton>
+          </div>
+        )}
 
-        {/* Banken lijst */}
-        <div className="space-y-1 mb-5">
-          {banks.map(bank => (
-            <button key={`${bank.name}-${bank.country}`}
-              onClick={() => connect(bank)}
-              disabled={loading !== null}
-              className="w-full px-4 py-3 rounded-xl flex items-center justify-between transition-all"
-              style={{
-                backgroundColor: loading === bank.name ? 'rgba(26,58,42,0.35)' : 'var(--tab-bg)',
-                border: '1px solid var(--border)',
-                opacity: loading !== null && loading !== bank.name ? 0.5 : 1,
-              }}>
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm"
-                  style={{ backgroundColor: 'var(--surface)' }}>
-                  🏦
-                </div>
-                <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>
-                  {bank.name}
-                </span>
-              </div>
-              {loading === bank.name
-                ? <span className="text-xs" style={{ color: 'var(--brand)' }}>Verbinden...</span>
-                : <span style={{ color: 'var(--muted)', fontSize: 12 }}>→</span>
-              }
-            </button>
-          ))}
-        </div>
+        {/* Provider: Enable Banking */}
+        {BANKING_PROVIDER === 'enablebanking' && (
+          <>
+            {/* Land filter */}
+            <div className="flex gap-1 p-1 rounded-lg mb-4" style={{ backgroundColor: 'var(--tab-bg)' }}>
+              {(['NL', 'BE'] as const).map(c => (
+                <button key={c} onClick={() => setFilter(c)}
+                  className="flex-1 py-1.5 rounded-md text-xs font-medium transition-all"
+                  style={{
+                    backgroundColor: filter === c ? 'var(--tab-active)' : 'transparent',
+                    color: filter === c ? 'var(--tab-active-text)' : 'var(--muted)',
+                  }}>
+                  {c === 'NL' ? '🇳🇱 Nederland' : '🇧🇪 België'}
+                </button>
+              ))}
+            </div>
+
+            {/* Banken lijst */}
+            <div className="space-y-1 mb-5">
+              {banks.map(bank => (
+                <button key={`${bank.name}-${bank.country}`}
+                  onClick={() => connectEB(bank)}
+                  disabled={loading !== null}
+                  className="w-full px-4 py-3 rounded-xl flex items-center justify-between transition-all"
+                  style={{
+                    backgroundColor: loading === bank.name ? 'rgba(26,58,42,0.35)' : 'var(--tab-bg)',
+                    border: '1px solid var(--border)',
+                    opacity: loading !== null && loading !== bank.name ? 0.5 : 1,
+                  }}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm"
+                      style={{ backgroundColor: 'var(--surface)' }}>
+                      🏦
+                    </div>
+                    <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+                      {bank.name}
+                    </span>
+                  </div>
+                  {loading === bank.name
+                    ? <span className="text-xs" style={{ color: 'var(--brand)' }}>Verbinden...</span>
+                    : <span style={{ color: 'var(--muted)', fontSize: 12 }}>→</span>
+                  }
+                </button>
+              ))}
+            </div>
+          </>
+        )}
 
         {/* Security note */}
         <div className="rounded-xl p-3"
