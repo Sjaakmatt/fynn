@@ -89,20 +89,20 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
 
   // ── Badge ─────────────────────────────────────────────────────
 
-  function getBadge() {
+  function getBadge(): { label: string; color: string } {
     switch (subscription.status) {
       case 'active':
-        return { label: 'Pro', className: 'badge-pro' }
+        return { label: 'Pro', color: '#4ade80' }
       case 'trialing': {
         const d = subscription.trialEndsAt
           ? Math.max(0, Math.ceil((new Date(subscription.trialEndsAt).getTime() - Date.now()) / 86400000))
           : 0
-        return { label: `Trial · ${d}d`, className: 'badge-trial' }
+        return { label: `Trial · ${d}d`, color: '#F59E0B' }
       }
       case 'past_due':
-        return { label: 'Betaling mislukt', className: 'badge-error' }
+        return { label: 'Betaling mislukt', color: '#EF4444' }
       default:
-        return { label: 'Free', className: 'badge-free' }
+        return { label: 'Free', color: 'var(--muted)' }
     }
   }
 
@@ -116,65 +116,6 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
 
   return (
     <div className="min-h-screen transition-colors" style={{ backgroundColor: 'var(--bg)' }}>
-      <style>{`
-        .badge-pro {
-          background: rgba(5, 150, 105, 0.12);
-          color: #059669;
-          border: 1px solid rgba(5, 150, 105, 0.25);
-        }
-        .dark .badge-pro {
-          background: rgba(16, 185, 129, 0.12);
-          color: #34D399;
-          border: 1px solid rgba(16, 185, 129, 0.2);
-        }
-        .badge-trial {
-          background: rgba(217, 119, 6, 0.12);
-          color: #D97706;
-          border: 1px solid rgba(217, 119, 6, 0.25);
-        }
-        .dark .badge-trial {
-          background: rgba(245, 158, 11, 0.12);
-          color: #FBBF24;
-          border: 1px solid rgba(245, 158, 11, 0.2);
-        }
-        .badge-error {
-          background: rgba(220, 38, 38, 0.12);
-          color: #DC2626;
-          border: 1px solid rgba(220, 38, 38, 0.25);
-        }
-        .dark .badge-error {
-          background: rgba(248, 113, 113, 0.12);
-          color: #F87171;
-          border: 1px solid rgba(248, 113, 113, 0.2);
-        }
-        .badge-free {
-          background: var(--tab-bg);
-          color: var(--muted);
-          border: 1px solid var(--border);
-        }
-        .danger-zone {
-          background: rgba(220, 38, 38, 0.06);
-          border: 1px solid rgba(220, 38, 38, 0.15);
-        }
-        .dark .danger-zone {
-          background: rgba(248, 113, 113, 0.06);
-          border: 1px solid rgba(248, 113, 113, 0.12);
-        }
-        .danger-title { color: #991B1B; }
-        .dark .danger-title { color: #FCA5A5; }
-        .danger-text { color: #DC2626; }
-        .dark .danger-text { color: #F87171; }
-        .danger-cancel {
-          background: var(--surface);
-          border: 1px solid rgba(220, 38, 38, 0.2);
-          color: #DC2626;
-        }
-        .dark .danger-cancel {
-          background: var(--surface);
-          border: 1px solid rgba(248, 113, 113, 0.2);
-          color: #F87171;
-        }
-      `}</style>
 
       {/* ── Nav ─────────────────────────────────────────────────── */}
       <nav
@@ -184,7 +125,7 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
           <button
             onClick={() => router.push('/dashboard')}
-            className="flex items-center gap-2 text-sm font-medium transition-opacity hover:opacity-70"
+            className="flex items-center gap-2 text-sm transition-opacity hover:opacity-70"
             style={{ color: 'var(--text)' }}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -201,15 +142,13 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
         {/* ── Profiel hero ───────────────────────────────────────── */}
         <Card>
           <div className="text-center">
-            {/* Avatar */}
             <div
               className="w-16 h-16 rounded-full mx-auto mb-3 flex items-center justify-center text-xl font-bold text-white select-none"
-              style={{ backgroundColor: 'var(--brand, #1A3A2A)' }}
+              style={{ backgroundColor: 'var(--brand)' }}
             >
               {initials}
             </div>
 
-            {/* Naam (inline edit) */}
             {editingName ? (
               <div className="flex items-center gap-2 max-w-xs mx-auto mb-1">
                 <input
@@ -218,10 +157,10 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
                   onChange={(e) => setFullName(e.target.value)}
                   autoFocus
                   maxLength={50}
-                  className="flex-1 px-3 py-1.5 text-sm text-center rounded-lg border focus:outline-none focus:ring-2"
+                  className="flex-1 px-4 py-2 text-sm text-center rounded-xl outline-none"
                   style={{
-                    backgroundColor: 'var(--bg)',
-                    borderColor: 'var(--border)',
+                    backgroundColor: 'var(--tab-bg)',
+                    border: '1px solid var(--border)',
                     color: 'var(--text)',
                   }}
                   onKeyDown={(e) => {
@@ -232,10 +171,10 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
                 <button
                   onClick={handleSaveName}
                   disabled={saving || !fullName.trim()}
-                  className="px-3 py-1.5 text-xs font-medium text-white rounded-lg disabled:opacity-50 transition-opacity"
-                  style={{ backgroundColor: 'var(--brand, #1A3A2A)' }}
+                  className="px-3 py-2 text-xs font-semibold text-white rounded-xl disabled:opacity-30 transition-opacity"
+                  style={{ backgroundColor: 'var(--brand)' }}
                 >
-                  {saving ? '...' : '✓'}
+                  {saving ? '…' : '✓'}
                 </button>
               </div>
             ) : (
@@ -254,8 +193,14 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
 
             <p className="text-xs" style={{ color: 'var(--muted)' }}>{user.email}</p>
 
-            {/* Badge */}
-            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-3 ${badge.className}`}>
+            <span
+              className="inline-flex items-center px-2.5 py-0.5 rounded-xl text-xs font-medium mt-3"
+              style={{
+                backgroundColor: `color-mix(in srgb, ${badge.color} 10%, transparent)`,
+                color: badge.color,
+                border: `1px solid color-mix(in srgb, ${badge.color} 25%, transparent)`,
+              }}
+            >
               {badge.label}
             </span>
           </div>
@@ -280,16 +225,16 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
                 <button
                   onClick={handleManageSubscription}
                   disabled={portalLoading}
-                  className="px-3 py-1.5 text-xs font-medium rounded-lg transition-all disabled:opacity-50"
+                  className="px-3 py-1.5 text-xs rounded-xl transition-opacity disabled:opacity-30"
                   style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--text)', border: '1px solid var(--border)' }}
                 >
-                  {portalLoading ? '...' : 'Beheren'}
+                  {portalLoading ? '…' : 'Beheren'}
                 </button>
               ) : (
                 <button
                   onClick={() => router.push('/pricing')}
-                  className="px-3 py-1.5 text-xs font-medium text-white rounded-lg transition-opacity hover:opacity-90"
-                  style={{ backgroundColor: 'var(--brand, #1A3A2A)' }}
+                  className="px-3 py-1.5 text-xs font-semibold text-white rounded-xl transition-opacity hover:opacity-90"
+                  style={{ backgroundColor: 'var(--brand)' }}
                 >
                   Upgraden
                 </button>
@@ -316,7 +261,7 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
                         {acc.account_type === 'SAVINGS' ? '💰' : '🏦'}
                       </span>
                       <div className="min-w-0">
-                        <p className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>
+                        <p className="text-sm truncate" style={{ color: 'var(--text)' }}>
                           {acc.account_name}
                         </p>
                         <p className="text-xs" style={{ color: 'var(--muted)' }}>
@@ -362,14 +307,14 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
         <button
           onClick={handleLogout}
           disabled={loggingOut}
-          className="w-full py-3 text-sm font-medium rounded-2xl transition-all disabled:opacity-50"
+          className="w-full py-3.5 text-sm font-semibold rounded-2xl transition-opacity disabled:opacity-30"
           style={{
             backgroundColor: 'var(--surface)',
             border: '1px solid var(--border)',
-            color: '#DC2626',
+            color: '#EF4444',
           }}
         >
-          {loggingOut ? 'Uitloggen...' : 'Uitloggen'}
+          {loggingOut ? 'Uitloggen…' : 'Uitloggen'}
         </button>
 
         {/* ── Danger zone ────────────────────────────────────────── */}
@@ -383,27 +328,35 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
               Account verwijderen
             </button>
           ) : (
-            <div className="danger-zone rounded-2xl p-4 space-y-3">
-              <p className="danger-title text-sm font-medium">
+            <div
+              className="rounded-2xl p-4 space-y-3"
+              style={{
+                backgroundColor: 'rgba(239,68,68,0.06)',
+                border: '1px solid rgba(239,68,68,0.15)',
+              }}
+            >
+              <p className="text-sm font-semibold" style={{ color: '#EF4444' }}>
                 Weet je het zeker?
               </p>
-              <p className="danger-text text-xs">
+              <p className="text-xs" style={{ color: 'var(--muted)' }}>
                 Al je data wordt permanent verwijderd — transacties, bankrekeningen, coaching.
                 Dit kan niet ongedaan worden gemaakt.
               </p>
-              <div className="flex gap-2">
+              <div className="flex gap-3">
                 <button
                   onClick={() => setDeleteConfirm(false)}
-                  className="danger-cancel flex-1 px-3 py-2 text-xs font-medium rounded-xl transition-opacity hover:opacity-80"
+                  className="flex-1 py-3.5 text-xs rounded-xl transition-opacity"
+                  style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--text)' }}
                 >
                   Annuleren
                 </button>
                 <button
                   onClick={handleDeleteAccount}
                   disabled={deleting}
-                  className="flex-1 px-3 py-2 text-xs font-medium rounded-xl bg-red-600 text-white disabled:opacity-50 transition-opacity hover:opacity-90"
+                  className="flex-1 py-3.5 text-xs font-semibold rounded-xl text-white disabled:opacity-30 transition-opacity"
+                  style={{ backgroundColor: '#EF4444' }}
                 >
-                  {deleting ? 'Bezig...' : 'Definitief verwijderen'}
+                  {deleting ? 'Bezig…' : 'Definitief verwijderen'}
                 </button>
               </div>
             </div>
@@ -432,7 +385,7 @@ function Section({ label, children }: { label: string; children: React.ReactNode
   return (
     <div>
       <p
-        className="text-xs font-medium uppercase tracking-wide px-1 mb-2"
+        className="text-xs uppercase tracking-wider px-1 mb-2"
         style={{ color: 'var(--muted)' }}
       >
         {label}
@@ -457,7 +410,7 @@ function Row({ icon, label, sublabel, action }: {
       <div className="flex items-center gap-3 min-w-0">
         <span className="shrink-0" style={{ color: 'var(--muted)' }}>{icon}</span>
         <div className="min-w-0">
-          <p className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>{label}</p>
+          <p className="text-sm truncate" style={{ color: 'var(--text)' }}>{label}</p>
           {sublabel && <p className="text-xs" style={{ color: 'var(--muted)' }}>{sublabel}</p>}
         </div>
       </div>

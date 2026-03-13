@@ -14,23 +14,6 @@ interface Subscription {
   isActive: boolean
 }
 
-const SUBSCRIPTION_ICONS: Record<string, string> = {
-  'netflix': '🎬', 'spotify': '🎵', 'disney': '🏰', 'youtube': '▶️',
-  'adobe': '🎨', 'microsoft': '💼', 'apple': '🍎', 'google': '🔍',
-  'amazon': '📦', 'canva': '✏️', 'notion': '📝', 'github': '💻',
-  'chatgpt': '🤖', 'openai': '🤖', 'vodafone': '📱', 'odido': '📱',
-  'kpn': '📱', 't-mobile': '📱', 'tele2': '📱', 'ziggo': '📺',
-  'basic-fit': '💪', 'sportschool': '💪',
-}
-
-function getIcon(name: string): string {
-  const lower = name.toLowerCase()
-  for (const [key, icon] of Object.entries(SUBSCRIPTION_ICONS)) {
-    if (lower.includes(key)) return icon
-  }
-  return '📱'
-}
-
 export default function SubscriptionManager() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [totaalPerMaand, setTotaalPerMaand] = useState(0)
@@ -72,7 +55,7 @@ export default function SubscriptionManager() {
         <div className="px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
           <h2 className="font-semibold text-sm" style={{ color: 'var(--text)' }}>Abonnementen</h2>
           <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
-            €{totaalPerMaand.toFixed(2)}/maand · {subscriptions.length} actief
+            <span style={{ fontVariantNumeric: 'tabular-nums' }}>€{totaalPerMaand.toFixed(2)}</span>/maand · {subscriptions.length} actief
           </p>
         </div>
 
@@ -89,26 +72,30 @@ export default function SubscriptionManager() {
               onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
             >
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0"
-                  style={{ backgroundColor: 'var(--tab-bg)' }}>
-                  {getIcon(sub.name)}
+                <div
+                  className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+                  style={{ backgroundColor: 'var(--tab-bg)' }}
+                >
+                  <span className="text-xs font-semibold" style={{ color: 'var(--muted)' }}>
+                    {sub.name.charAt(0).toUpperCase()}
+                  </span>
                 </div>
                 <div>
-                  <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>{sub.name}</p>
+                  <p className="text-sm" style={{ color: 'var(--text)' }}>{sub.name}</p>
                   <p className="text-xs" style={{ color: 'var(--muted)' }}>
                     {sub.cadence} · laatste {new Date(sub.lastDate).toLocaleDateString('nl-NL', {
-                      day: 'numeric', month: 'short'
+                      day: 'numeric', month: 'short',
                     })}
                   </p>
                 </div>
               </div>
 
               <div className="text-right shrink-0">
-                <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+                <p className="text-sm font-semibold" style={{ color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
                   €{sub.amount.toFixed(2)}
                 </p>
                 {sub.cadence !== 'maandelijks' && (
-                  <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                  <p className="text-xs" style={{ color: 'var(--muted)', fontVariantNumeric: 'tabular-nums' }}>
                     €{sub.monthlyAmount.toFixed(2)}/maand
                   </p>
                 )}
@@ -120,7 +107,7 @@ export default function SubscriptionManager() {
         <div className="px-5 py-3 border-t"
           style={{ borderColor: 'var(--border)', backgroundColor: 'var(--tab-bg)' }}>
           <p className="text-xs" style={{ color: 'var(--muted)' }}>
-            💡 Tik op een abonnement om op te zeggen
+            Tik op een abonnement om op te zeggen
           </p>
         </div>
       </div>

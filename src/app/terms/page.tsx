@@ -7,29 +7,33 @@ export const metadata = {
 
 export default function TermsPage() {
   return (
-    <main className="min-h-screen bg-white">
+    <main className="min-h-screen" style={{ backgroundColor: 'var(--bg)' }}>
       <div className="max-w-3xl mx-auto px-6 py-16">
 
         {/* Header */}
         <div className="mb-12">
-          <a href="/" className="text-sm font-semibold" style={{ color: '#1a5c3a' }}>
+          <a
+            href="/"
+            className="text-sm transition-opacity hover:opacity-70"
+            style={{ color: 'var(--brand)' }}
+          >
             ← Terug naar Fynn
           </a>
-          <h1 className="text-3xl font-bold mt-6 mb-2" style={{ color: '#111' }}>
+          <h1 className="text-2xl font-semibold mt-6 mb-2" style={{ color: 'var(--text)' }}>
             Algemene Voorwaarden
           </h1>
-          <p className="text-sm text-gray-500">
+          <p className="text-xs" style={{ color: 'var(--muted)' }}>
             Versie 1.0 — Laatst bijgewerkt: 1 maart 2026
           </p>
         </div>
 
-        <div className="prose prose-gray max-w-none space-y-10" style={{ lineHeight: '1.8', color: '#374151' }}>
+        <div className="max-w-none space-y-10 text-sm leading-relaxed" style={{ color: 'var(--muted)' }}>
 
           {/* Intro */}
           <section>
             <p>
               Deze algemene voorwaarden zijn van toepassing op het gebruik van Fynn, een AI-ondersteunde
-              persoonlijke financiële coach aangeboden door <strong>Fynn B.V.</strong> (hierna: &quot;Fynn&quot;,
+              persoonlijke financiële coach aangeboden door <strong style={{ color: 'var(--text)' }}>Fynn B.V.</strong> (hierna: &quot;Fynn&quot;,
               &quot;wij&quot; of &quot;ons&quot;), gevestigd in Nederland. Door een account aan te maken
               en gebruik te maken van onze diensten, ga je akkoord met deze voorwaarden.
             </p>
@@ -38,10 +42,10 @@ export default function TermsPage() {
           <Section number="1" title="Definities">
             <p>In deze voorwaarden wordt verstaan onder:</p>
             <ul>
-              <li><strong>Dienst:</strong> de Fynn-applicatie, inclusief alle functies zoals bankintegratie, AI-coaching, uitgavenanalyse en financiële inzichten.</li>
-              <li><strong>Gebruiker:</strong> de natuurlijke persoon die een account aanmaakt en de Dienst gebruikt voor persoonlijk, niet-commercieel gebruik.</li>
-              <li><strong>Bankdata:</strong> transactiegegevens en rekeningsaldi die via PSD2-geautoriseerde open banking worden opgehaald bij jouw bank.</li>
-              <li><strong>Abonnement:</strong> het betaalde toegangsrecht tot de volledige functionaliteit van de Dienst.</li>
+              <li><strong style={{ color: 'var(--text)' }}>Dienst:</strong> de Fynn-applicatie, inclusief alle functies zoals bankintegratie, AI-coaching, uitgavenanalyse en financiële inzichten.</li>
+              <li><strong style={{ color: 'var(--text)' }}>Gebruiker:</strong> de natuurlijke persoon die een account aanmaakt en de Dienst gebruikt voor persoonlijk, niet-commercieel gebruik.</li>
+              <li><strong style={{ color: 'var(--text)' }}>Bankdata:</strong> transactiegegevens en rekeningsaldi die via PSD2-geautoriseerde open banking worden opgehaald bij jouw bank.</li>
+              <li><strong style={{ color: 'var(--text)' }}>Abonnement:</strong> het betaalde toegangsrecht tot de volledige functionaliteit van de Dienst.</li>
             </ul>
           </Section>
 
@@ -49,11 +53,11 @@ export default function TermsPage() {
             <p>
               Fynn is een persoonlijk financieel inzichtstool. De Dienst analyseert jouw bankdata en
               geeft inzicht in uitgaven, vaste lasten en financiële patronen. Alle analyses en
-              AI-gegenereerde inzichten zijn <strong>informatief van aard</strong> en vormen
+              AI-gegenereerde inzichten zijn <strong style={{ color: 'var(--text)' }}>informatief van aard</strong> en vormen
               geen financieel, juridisch of fiscaal advies.
             </p>
             <p>
-              Fynn is <strong>geen financieel adviseur</strong> in de zin van de Wet op het financieel toezicht (Wft).
+              Fynn is <strong style={{ color: 'var(--text)' }}>geen financieel adviseur</strong> in de zin van de Wet op het financieel toezicht (Wft).
               Beslissingen over investeringen, leningen, verzekeringen of andere financiële producten neem
               je altijd op eigen verantwoordelijkheid.
             </p>
@@ -66,10 +70,10 @@ export default function TermsPage() {
               Account Information Service Provider (AISP).
             </p>
             <ul>
-              <li>Fynn heeft uitsluitend <strong>leestoegang</strong> tot je bankdata. Wij kunnen nooit betalingen initiëren of geld overmaken.</li>
-              <li>Toegang wordt verleend voor een periode van maximaal <strong>90 dagen</strong>, waarna je opnieuw toestemming geeft.</li>
+              <li>Fynn heeft uitsluitend <strong style={{ color: 'var(--text)' }}>leestoegang</strong> tot je bankdata. Wij kunnen nooit betalingen initiëren of geld overmaken.</li>
+              <li>Toegang wordt verleend voor een periode van maximaal <strong style={{ color: 'var(--text)' }}>90 dagen</strong>, waarna je opnieuw toestemming geeft.</li>
               <li>Je kunt de koppeling op elk moment intrekken via de app of direct bij je bank.</li>
-              <li>Bankdata wordt verwerkt conform onze <a href="/privacy" style={{ color: '#1a5c3a' }}>Privacyverklaring</a> en de AVG/GDPR.</li>
+              <li>Bankdata wordt verwerkt conform onze <a href="/privacy" style={{ color: 'var(--brand)' }}>Privacyverklaring</a> en de AVG/GDPR.</li>
             </ul>
           </Section>
 
@@ -83,7 +87,7 @@ export default function TermsPage() {
               <li>Alle activiteiten die plaatsvinden via jouw account.</li>
             </ul>
             <p>
-              Fynn is uitsluitend bestemd voor personen van <strong>18 jaar en ouder</strong> die
+              Fynn is uitsluitend bestemd voor personen van <strong style={{ color: 'var(--text)' }}>18 jaar en ouder</strong> die
               woonachtig zijn in Nederland of België.
             </p>
           </Section>
@@ -94,13 +98,13 @@ export default function TermsPage() {
               onze website. Op dit moment bieden wij:
             </p>
             <ul>
-              <li><strong>Gratis proefperiode:</strong> 14 dagen volledige toegang, geen creditcard vereist.</li>
-              <li><strong>Fynn Pro maandelijks:</strong> €12,99/maand, maandelijks opzegbaar.</li>
-              <li><strong>Fynn Pro jaarlijks:</strong> €99/jaar, jaarlijks opzegbaar.</li>
+              <li><strong style={{ color: 'var(--text)' }}>Gratis proefperiode:</strong> 14 dagen volledige toegang, geen creditcard vereist.</li>
+              <li><strong style={{ color: 'var(--text)' }}>Fynn Pro maandelijks:</strong> €12,99/maand, maandelijks opzegbaar.</li>
+              <li><strong style={{ color: 'var(--text)' }}>Fynn Pro jaarlijks:</strong> €99/jaar, jaarlijks opzegbaar.</li>
             </ul>
             <p>
               Betalingen worden verwerkt via Stripe. Abonnementen worden automatisch verlengd
-              tenzij je minimaal <strong>24 uur voor het einde</strong> van de lopende periode opzegt.
+              tenzij je minimaal <strong style={{ color: 'var(--text)' }}>24 uur voor het einde</strong> van de lopende periode opzegt.
               Je kunt opzeggen via de instellingen in de app.
             </p>
             <p>
@@ -126,7 +130,7 @@ export default function TermsPage() {
             </p>
             <p>
               Wij behouden het recht om functies toe te voegen, te wijzigen of te verwijderen.
-              Bij ingrijpende wijzigingen informeren wij je minimaal <strong>30 dagen van tevoren</strong>
+              Bij ingrijpende wijzigingen informeren wij je minimaal <strong style={{ color: 'var(--text)' }}>30 dagen van tevoren</strong>{' '}
               via e-mail.
             </p>
           </Section>
@@ -169,13 +173,13 @@ export default function TermsPage() {
 
           <Section number="11" title="Toepasselijk recht en geschillen">
             <p>
-              Op deze voorwaarden is <strong>Nederlands recht</strong> van toepassing.
+              Op deze voorwaarden is <strong style={{ color: 'var(--text)' }}>Nederlands recht</strong> van toepassing.
               Geschillen worden bij voorkeur in onderling overleg opgelost. Lukt dat niet,
               dan is de bevoegde rechter in het arrondissement Amsterdam exclusief bevoegd.
             </p>
             <p>
               Als consument kun je ook gebruik maken van het ODR-platform van de Europese
-              Commissie: <a href="https://ec.europa.eu/odr" target="_blank" rel="noopener noreferrer" style={{ color: '#1a5c3a' }}>ec.europa.eu/odr</a>.
+              Commissie: <a href="https://ec.europa.eu/odr" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--brand)' }}>ec.europa.eu/odr</a>.
             </p>
           </Section>
 
@@ -190,15 +194,20 @@ export default function TermsPage() {
           <Section number="13" title="Contact">
             <p>
               Heb je vragen over deze voorwaarden? Neem contact op via:{' '}
-              <a href="mailto:support@meetfynn.nl" style={{ color: '#1a5c3a' }}>support@meetfynn.nl</a>
+              <a href="mailto:support@meetfynn.nl" style={{ color: 'var(--brand)' }}>support@meetfynn.nl</a>
             </p>
-            <p className="text-sm text-gray-500 mt-4">
+            <p className="text-xs mt-4" style={{ color: 'var(--muted)' }}>
               Fynn B.V.<br />
               Nederland<br />
               KVK: [in te vullen na inschrijving]
             </p>
           </Section>
 
+        </div>
+
+        {/* Footer */}
+        <div className="mt-16 pt-8 text-center text-xs" style={{ borderTop: '1px solid var(--border)', color: 'var(--muted)' }}>
+          <p>© {new Date().getFullYear()} ter Veld Holding B.V. — Fynn</p>
         </div>
       </div>
     </main>
@@ -212,10 +221,13 @@ function Section({ number, title, children }: {
 }) {
   return (
     <section>
-      <h2 className="text-lg font-semibold mb-3" style={{ color: '#111' }}>
+      <h2
+        className="text-lg font-semibold mb-3 pb-2"
+        style={{ color: 'var(--text)', borderBottom: '1px solid var(--border)' }}
+      >
         Artikel {number}. {title}
       </h2>
-      <div className="space-y-3 text-sm">
+      <div className="space-y-3 text-sm" style={{ color: 'var(--muted)' }}>
         {children}
       </div>
     </section>

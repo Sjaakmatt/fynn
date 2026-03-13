@@ -5,10 +5,6 @@ import { createClient } from '@/lib/supabase/client'
 import { useState, useEffect } from 'react'
 import MFAEnroll from './Mfaenroll'
 
-/**
- * MFA instellingen component voor het dashboard/settings.
- * Toont of MFA aan/uit staat en biedt enrollment/unenroll flow.
- */
 export default function MFASettings() {
   const [hasMFA, setHasMFA] = useState(false)
   const [factorId, setFactorId] = useState<string | null>(null)
@@ -46,7 +42,6 @@ export default function MFASettings() {
     setError('')
     setUnenrolling(true)
 
-    // Verwijder ALLE factors (verified + unverified)
     const { data: factors } = await supabase.auth.mfa.listFactors()
     if (factors) {
       const all = [...(factors.totp ?? []), ...(factors.phone ?? [])]
@@ -73,10 +68,10 @@ export default function MFASettings() {
   if (loading) {
     return (
       <div
-        className="rounded-2xl border p-6 transition-colors"
-        style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}
+        className="rounded-2xl p-6"
+        style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
       >
-        <div className="h-16 rounded-xl animate-pulse" style={{ backgroundColor: 'var(--bg)' }} />
+        <div className="h-16 rounded-xl animate-pulse" style={{ backgroundColor: 'var(--tab-bg)' }} />
       </div>
     )
   }
@@ -92,16 +87,20 @@ export default function MFASettings() {
 
   return (
     <div
-      className="rounded-2xl border p-5 transition-colors"
-      style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}
+      className="rounded-2xl p-5"
+      style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div
             className="w-10 h-10 rounded-xl flex items-center justify-center"
-            style={{ backgroundColor: hasMFA ? '#E8F5E9' : 'var(--tab-bg)' }}
+            style={{
+              backgroundColor: hasMFA
+                ? 'color-mix(in srgb, var(--brand) 10%, transparent)'
+                : 'var(--tab-bg)',
+            }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={hasMFA ? '#1A3A2A' : 'var(--muted)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={hasMFA ? 'var(--brand)' : 'var(--muted)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
             </svg>
           </div>
@@ -120,23 +119,31 @@ export default function MFASettings() {
         <div className="flex items-center gap-2">
           {hasMFA ? (
             <>
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+              <span
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-medium"
+                style={{
+                  backgroundColor: 'rgba(74,222,128,0.08)',
+                  color: '#4ade80',
+                  border: '1px solid rgba(74,222,128,0.25)',
+                }}
+              >
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#4ade80' }} />
                 Actief
               </span>
               <button
                 onClick={handleUnenroll}
                 disabled={unenrolling}
-                className="px-3 py-1.5 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                className="px-3 py-1.5 text-xs rounded-xl transition-opacity disabled:opacity-30"
+                style={{ color: '#EF4444' }}
               >
-                {unenrolling ? 'Bezig...' : 'Uitschakelen'}
+                {unenrolling ? 'Bezig…' : 'Uitschakelen'}
               </button>
             </>
           ) : (
             <button
               onClick={() => setShowEnroll(true)}
-              className="px-4 py-2 text-sm font-medium text-white rounded-xl transition-colors hover:opacity-90"
-              style={{ backgroundColor: '#1A3A2A' }}
+              className="px-4 py-2 text-sm font-semibold text-white rounded-xl transition-opacity hover:opacity-90"
+              style={{ backgroundColor: 'var(--brand)' }}
             >
               Inschakelen
             </button>
@@ -145,14 +152,20 @@ export default function MFASettings() {
       </div>
 
       {error && (
-        <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-3">
-          <p className="text-sm text-red-600">{error}</p>
+        <div
+          className="mt-3 rounded-xl p-3"
+          style={{ backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}
+        >
+          <p className="text-xs" style={{ color: '#EF4444' }}>{error}</p>
         </div>
       )}
 
       {success && (
-        <div className="mt-3 bg-green-50 border border-green-200 rounded-lg p-3">
-          <p className="text-sm text-green-700">{success}</p>
+        <div
+          className="mt-3 rounded-xl p-3"
+          style={{ backgroundColor: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.25)' }}
+        >
+          <p className="text-xs" style={{ color: '#4ade80' }}>{success}</p>
         </div>
       )}
     </div>

@@ -1,8 +1,5 @@
-'use client'
-
 // src/components/SavingsSetup.tsx
-// Toont na bank koppelen. Detecteert automatisch spaaroverschrijvingen
-// en vraagt de gebruiker zijn spaarsaldo in te vullen.
+'use client'
 
 import { useState, useEffect } from 'react'
 
@@ -15,7 +12,7 @@ interface DetectedSavings {
 interface SavingsAccount {
   iban: string
   name: string
-  balance: string  // string voor het input veld
+  balance: string
   detected: boolean
 }
 
@@ -36,7 +33,6 @@ export default function SavingsSetup({ onComplete }: Props) {
 
   async function detectSavingsTransfers() {
     try {
-      // Haal transacties op en detecteer periodieke overboekingen
       const res = await fetch('/api/savings/detect')
       if (!res.ok) throw new Error()
       const data = await res.json()
@@ -44,7 +40,6 @@ export default function SavingsSetup({ onComplete }: Props) {
       const detectedAccounts: DetectedSavings[] = data.savings ?? []
       setDetected(detectedAccounts)
 
-      // Zet ze klaar als invoervelden
       setAccounts(detectedAccounts.map(d => ({
         iban: d.iban,
         name: d.name,
@@ -52,7 +47,6 @@ export default function SavingsSetup({ onComplete }: Props) {
         detected: true,
       })))
     } catch {
-      // Als detectie mislukt, toon lege invulvelden
       setAccounts([{ iban: '', name: 'Mijn spaarrekening', balance: '', detected: false }])
     } finally {
       setLoading(false)
@@ -79,7 +73,6 @@ export default function SavingsSetup({ onComplete }: Props) {
     })
 
     if (toSave.length === 0) {
-      // Geen saldo ingevuld — gewoon doorgaan
       onComplete()
       return
     }
@@ -109,8 +102,11 @@ export default function SavingsSetup({ onComplete }: Props) {
 
   if (loading) {
     return (
-      <div className="rounded-2xl p-6 text-center" style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div className="text-2xl mb-2">🔍</div>
+      <div className="rounded-2xl p-8 text-center" style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div
+          className="w-6 h-6 rounded-full border-2 border-t-transparent mx-auto mb-3 animate-spin"
+          style={{ borderColor: 'var(--brand)', borderTopColor: 'transparent' }}
+        />
         <p className="text-sm" style={{ color: 'var(--muted)' }}>Spaarrekeningen detecteren...</p>
       </div>
     )
@@ -120,22 +116,21 @@ export default function SavingsSetup({ onComplete }: Props) {
     <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
 
       {/* Header */}
-      <div className="p-6 border-b" style={{ borderColor: 'var(--border)' }}>
-        <div className="text-2xl mb-3">💰</div>
-        <h2 className="text-lg font-semibold mb-1" style={{ color: 'var(--text)' }}>
+      <div className="px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+        <p className="text-lg font-semibold mb-1" style={{ color: 'var(--text)' }}>
           Wat staat er op je spaarrekening?
-        </h2>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
+        </p>
+        <p className="text-xs" style={{ color: 'var(--muted)' }}>
           Je bank geeft geen saldo van spaarrekeningen vrij via PSD2. Vul je spaarsaldo handmatig in — je kunt dit altijd later bijwerken.
         </p>
       </div>
 
       {/* Gedetecteerde spaaroverschrijvingen */}
       {detected.length > 0 && (
-        <div className="px-6 pt-4 pb-2">
-          <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(26,92,58,0.08)', border: '1px solid rgba(26,92,58,0.15)' }}>
-            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--brand)' }}>
-              ✓ Fynn ziet dat je €{totalMonthly.toFixed(0)}/maand spaart
+        <div className="px-5 pt-4">
+          <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--tab-bg)' }}>
+            <p className="text-xs font-medium mb-2" style={{ color: 'var(--brand)' }}>
+              Fynn ziet dat je €{totalMonthly.toFixed(0)}/maand spaart
             </p>
             {detected.map((d, i) => (
               <p key={i} className="text-xs" style={{ color: 'var(--muted)' }}>
@@ -147,17 +142,16 @@ export default function SavingsSetup({ onComplete }: Props) {
       )}
 
       {/* Invoervelden */}
-      <div className="p-6 space-y-4">
+      <div className="px-5 py-5 space-y-4">
         {accounts.map((acc, i) => (
           <div key={i} className="space-y-2">
-            {/* Naam */}
             <div className="flex items-center gap-2">
               <input
                 type="text"
                 value={acc.name}
                 onChange={e => updateAccount(i, 'name', e.target.value)}
                 placeholder="Naam spaarrekening"
-                className="flex-1 rounded-xl px-4 py-2.5 text-sm outline-none"
+                className="flex-1 rounded-xl px-4 py-3 text-sm outline-none"
                 style={{
                   backgroundColor: 'var(--tab-bg)',
                   border: '1px solid var(--border)',
@@ -167,16 +161,15 @@ export default function SavingsSetup({ onComplete }: Props) {
               {accounts.length > 1 && (
                 <button
                   onClick={() => removeAccount(i)}
-                  className="text-xs px-2 py-2 rounded-lg"
+                  className="text-sm leading-none"
                   style={{ color: 'var(--muted)' }}>
                   ✕
                 </button>
               )}
             </div>
 
-            {/* Saldo */}
             <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-medium" style={{ color: 'var(--muted)' }}>
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--muted)' }}>
                 €
               </span>
               <input
@@ -186,7 +179,7 @@ export default function SavingsSetup({ onComplete }: Props) {
                 placeholder="0,00"
                 min="0"
                 step="0.01"
-                className="w-full rounded-xl pl-8 pr-4 py-2.5 text-sm outline-none"
+                className="w-full rounded-xl pl-8 pr-4 py-3 text-sm outline-none"
                 style={{
                   backgroundColor: 'var(--tab-bg)',
                   border: '1px solid var(--border)',
@@ -195,14 +188,13 @@ export default function SavingsSetup({ onComplete }: Props) {
               />
             </div>
 
-            {/* IBAN (optioneel, alleen als niet gedetecteerd) */}
             {!acc.detected && (
               <input
                 type="text"
                 value={acc.iban}
                 onChange={e => updateAccount(i, 'iban', e.target.value.toUpperCase())}
                 placeholder="IBAN (optioneel, bijv. NL12ABNA...)"
-                className="w-full rounded-xl px-4 py-2.5 text-sm outline-none font-mono"
+                className="w-full rounded-xl px-4 py-3 text-sm outline-none font-mono"
                 style={{
                   backgroundColor: 'var(--tab-bg)',
                   border: '1px solid var(--border)',
@@ -213,10 +205,9 @@ export default function SavingsSetup({ onComplete }: Props) {
           </div>
         ))}
 
-        {/* Extra rekening toevoegen */}
         <button
           onClick={addAccount}
-          className="w-full py-2.5 rounded-xl text-sm transition-all"
+          className="w-full py-3 rounded-xl text-xs font-medium transition-opacity hover:opacity-70"
           style={{
             border: '1px dashed var(--border)',
             color: 'var(--muted)',
@@ -225,23 +216,23 @@ export default function SavingsSetup({ onComplete }: Props) {
         </button>
 
         {error && (
-          <p className="text-xs px-3 py-2 rounded-xl" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+          <p className="text-xs rounded-xl p-3"
+            style={{ backgroundColor: 'rgba(239,68,68,0.08)', color: '#EF4444' }}>
             {error}
           </p>
         )}
 
-        {/* Knoppen */}
-        <div className="flex gap-3 pt-2">
+        <div className="flex gap-3">
           <button
             onClick={onComplete}
-            className="flex-1 py-3 rounded-xl text-sm transition-all"
-            style={{ border: '1px solid var(--border)', color: 'var(--muted)' }}>
+            className="flex-1 py-3.5 rounded-xl text-sm"
+            style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--text)' }}>
             Skip
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex-1 py-3 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-50"
+            className="flex-1 py-3.5 rounded-xl text-sm font-semibold text-white disabled:opacity-30 transition-opacity"
             style={{ backgroundColor: 'var(--brand)' }}>
             {saving ? 'Opslaan...' : 'Opslaan'}
           </button>

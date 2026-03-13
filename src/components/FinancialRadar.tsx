@@ -1,3 +1,4 @@
+// src/components/FinancialRadar.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -84,8 +85,11 @@ export default function FinancialRadar() {
                 Projectie komende 30 dagen
               </p>
             </div>
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
-              style={{ backgroundColor: `${risk.color}18`, color: risk.color }}>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium"
+              style={{
+                backgroundColor: `color-mix(in srgb, ${risk.color} 10%, transparent)`,
+                color: risk.color,
+              }}>
               <span>{risk.icon}</span>
               <span>{risk.label}</span>
             </div>
@@ -93,12 +97,12 @@ export default function FinancialRadar() {
         </div>
 
         <div className="px-5 py-4">
-          {/* Vrije ruimte groot */}
+          {/* Vrije ruimte */}
           <div className="mb-4">
             <p className="text-xs mb-1" style={{ color: 'var(--muted)' }}>
               Vrije ruimte deze maand
             </p>
-            <p className="text-4xl font-bold" style={{
+            <p className="text-2xl font-bold tabular-nums" style={{
               color: projection.projectedFreeSpace < 0 ? '#EF4444'
                 : projection.projectedFreeSpace < 200 ? '#F59E0B'
                 : 'var(--text)'
@@ -123,14 +127,14 @@ export default function FinancialRadar() {
             </div>
             <div className="rounded-xl p-3" style={{ backgroundColor: 'var(--tab-bg)' }}>
               <p className="text-xs mb-1" style={{ color: 'var(--muted)' }}>Nog te betalen</p>
-              <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+              <p className="text-sm font-semibold tabular-nums" style={{ color: 'var(--text)' }}>
                 €{projection.stillToPay.toFixed(0)}
               </p>
               <p className="text-xs" style={{ color: 'var(--muted)' }}>vaste lasten</p>
             </div>
             <div className="rounded-xl p-3" style={{ backgroundColor: 'var(--tab-bg)' }}>
               <p className="text-xs mb-1" style={{ color: 'var(--muted)' }}>Inkomen</p>
-              <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+              <p className="text-sm font-semibold tabular-nums" style={{ color: 'var(--text)' }}>
                 €{projection.salaryExpected.toFixed(0)}
               </p>
               <p className="text-xs" style={{ color: 'var(--muted)' }}>gemiddeld</p>
@@ -147,21 +151,21 @@ export default function FinancialRadar() {
               style={{ color: 'var(--muted)' }}
             >
               <span>{recurring.length} vaste lasten gedetecteerd</span>
-              <span>{showRecurring ? '▲' : '▼'}</span>
+              <span>{showRecurring ? '↑' : '↓'}</span>
             </button>
             {showRecurring && (
               <div className="px-5 pb-4 space-y-2">
                 {recurring.slice(0, 8).map(item => (
                   <div key={item.description} className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium capitalize" style={{ color: 'var(--text)' }}>
+                      <p className="text-sm capitalize" style={{ color: 'var(--text)' }}>
                         {item.description}
                       </p>
                       <p className="text-xs" style={{ color: 'var(--muted)' }}>
                         Elke maand ~dag {item.dayOfMonth}
                       </p>
                     </div>
-                    <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+                    <p className="text-sm font-semibold tabular-nums" style={{ color: 'var(--text)' }}>
                       €{item.amount.toFixed(0)}
                     </p>
                   </div>
@@ -178,7 +182,7 @@ export default function FinancialRadar() {
           {projection.signals.map((signal, i) => {
             const config = SEVERITY_COLORS[signal.severity]
             return (
-              <div key={i} className="rounded-2xl px-4 py-3 flex items-start gap-3"
+              <div key={i} className="rounded-xl px-4 py-3 flex items-start gap-3"
                 style={{ backgroundColor: config.bg, border: `1px solid ${config.border}` }}>
                 <span className="text-base mt-0.5">{config.icon}</span>
                 <div>

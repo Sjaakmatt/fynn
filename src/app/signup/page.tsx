@@ -57,7 +57,7 @@ export default function SignupPage() {
   }
 
   const inputStyle = {
-    backgroundColor: 'var(--surface)',
+    backgroundColor: 'var(--tab-bg)',
     border: '1px solid var(--border)',
     color: 'var(--text)',
   }
@@ -68,11 +68,11 @@ export default function SignupPage() {
       {/* Links — brand panel */}
       <div
         className="hidden lg:flex flex-col justify-between w-96 p-10 text-white"
-        style={{ backgroundColor: 'var(--brand, #1A3A2A)' }}
+        style={{ backgroundColor: 'var(--brand)' }}
       >
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center">
-            <span className="text-white text-xs font-bold">F</span>
+          <div className="w-7 h-7 rounded-xl bg-white/10 flex items-center justify-center">
+            <span className="text-white text-xs font-semibold">F</span>
           </div>
           <span className="font-semibold">Fynn</span>
         </div>
@@ -95,7 +95,9 @@ export default function SignupPage() {
                 className="w-4 h-4 rounded-full flex items-center justify-center"
                 style={{ backgroundColor: 'rgba(74,222,128,0.2)' }}
               >
-                <span style={{ color: '#4ADE80', fontSize: 9 }}>✓</span>
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
               </div>
               <p className="text-sm opacity-80">{item}</p>
             </div>
@@ -106,7 +108,6 @@ export default function SignupPage() {
       {/* Rechts — form */}
       <div className="flex-1 flex items-center justify-center px-6 py-12 relative">
 
-        {/* Theme toggle */}
         <div className="absolute top-4 right-4">
           <ThemeToggle />
         </div>
@@ -116,18 +117,18 @@ export default function SignupPage() {
           {/* Mobile logo */}
           <div className="flex items-center gap-2 mb-8 lg:hidden">
             <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: 'var(--brand, #1A3A2A)' }}
+              className="w-7 h-7 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: 'var(--brand)' }}
             >
-              <span className="text-white text-xs font-bold">F</span>
+              <span className="text-white text-xs font-semibold">F</span>
             </div>
             <span className="font-semibold" style={{ color: 'var(--text)' }}>Fynn</span>
           </div>
 
-          <h1 className="text-2xl font-semibold mb-1" style={{ color: 'var(--text)' }}>
+          <h1 className="text-lg font-semibold mb-1" style={{ color: 'var(--text)' }}>
             Start gratis
           </h1>
-          <p className="text-sm mb-8" style={{ color: 'var(--muted)' }}>
+          <p className="text-xs mb-8" style={{ color: 'var(--muted)' }}>
             14 dagen gratis. Daarna €12,99/maand. Altijd opzegbaar.
           </p>
 
@@ -140,7 +141,7 @@ export default function SignupPage() {
                 placeholder="Voornaam"
                 value={voornaam}
                 onChange={e => setVoornaam(e.target.value)}
-                className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all focus:ring-2"
+                className="w-full rounded-xl px-4 py-3 text-sm outline-none"
                 style={inputStyle}
                 required
               />
@@ -149,7 +150,7 @@ export default function SignupPage() {
                 placeholder="Achternaam"
                 value={achternaam}
                 onChange={e => setAchternaam(e.target.value)}
-                className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all focus:ring-2"
+                className="w-full rounded-xl px-4 py-3 text-sm outline-none"
                 style={inputStyle}
                 required
               />
@@ -161,7 +162,7 @@ export default function SignupPage() {
               placeholder="E-mailadres"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all focus:ring-2"
+              className="w-full rounded-xl px-4 py-3 text-sm outline-none"
               style={inputStyle}
               required
             />
@@ -172,7 +173,7 @@ export default function SignupPage() {
               placeholder="Wachtwoord (min. 8 tekens)"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all focus:ring-2"
+              className="w-full rounded-xl px-4 py-3 text-sm outline-none"
               style={inputStyle}
               required
             />
@@ -181,7 +182,7 @@ export default function SignupPage() {
               placeholder="Wachtwoord bevestigen"
               value={passwordConfirm}
               onChange={e => setPasswordConfirm(e.target.value)}
-              className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all focus:ring-2"
+              className="w-full rounded-xl px-4 py-3 text-sm outline-none"
               style={{
                 ...inputStyle,
                 borderColor: passwordConfirm && password !== passwordConfirm
@@ -199,15 +200,15 @@ export default function SignupPage() {
                   checked={tos}
                   onChange={e => setTos(e.target.checked)}
                   className="mt-0.5 rounded"
-                  style={{ accentColor: 'var(--brand, #1A3A2A)' }}
+                  style={{ accentColor: 'var(--brand)' }}
                 />
                 <span className="text-xs leading-relaxed" style={{ color: 'var(--muted)' }}>
                   Ik ga akkoord met de{' '}
-                  <a href="/voorwaarden" className="underline" style={{ color: 'var(--brand, #1A3A2A)' }}>
+                  <a href="/voorwaarden" className="underline" style={{ color: 'var(--brand)' }}>
                     algemene voorwaarden
                   </a>{' '}
                   en het{' '}
-                  <a href="/privacy" className="underline" style={{ color: 'var(--brand, #1A3A2A)' }}>
+                  <a href="/privacy" className="underline" style={{ color: 'var(--brand)' }}>
                     privacybeleid
                   </a>
                   . *
@@ -220,7 +221,7 @@ export default function SignupPage() {
                   checked={marketing}
                   onChange={e => setMarketing(e.target.checked)}
                   className="mt-0.5 rounded"
-                  style={{ accentColor: 'var(--brand, #1A3A2A)' }}
+                  style={{ accentColor: 'var(--brand)' }}
                 />
                 <span className="text-xs leading-relaxed" style={{ color: 'var(--muted)' }}>
                   Stuur mij wekelijkse financiële tips en productnieuws. Je kunt je altijd afmelden.
@@ -235,16 +236,16 @@ export default function SignupPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-xl px-4 py-3 text-sm font-medium text-white disabled:opacity-50 transition-opacity"
-              style={{ backgroundColor: 'var(--brand, #1A3A2A)' }}
+              className="w-full rounded-xl py-3.5 text-sm font-semibold text-white disabled:opacity-30 transition-opacity"
+              style={{ backgroundColor: 'var(--brand)' }}
             >
-              {loading ? 'Account aanmaken...' : 'Gratis starten →'}
+              {loading ? 'Account aanmaken…' : 'Gratis starten'}
             </button>
           </form>
 
-          <p className="text-sm text-center mt-5" style={{ color: 'var(--muted)' }}>
+          <p className="text-xs text-center mt-5" style={{ color: 'var(--muted)' }}>
             Al een account?{' '}
-            <a href="/login" className="font-medium" style={{ color: 'var(--brand, #1A3A2A)' }}>
+            <a href="/login" className="font-semibold" style={{ color: 'var(--brand)' }}>
               Inloggen
             </a>
           </p>

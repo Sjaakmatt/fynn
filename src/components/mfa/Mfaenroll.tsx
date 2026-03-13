@@ -21,10 +21,8 @@ export default function MFAEnroll({ onComplete, onCancel }: MFAEnrollProps) {
 
   useEffect(() => {
     ;(async () => {
-      // 1) Ruim ALLE unverified factors op vóór enrollment
       await cleanupUnverifiedFactors()
 
-      // 2) Enroll nieuwe factor
       const res = await supabase.auth.mfa.enroll({
         factorType: 'totp',
         friendlyName: `Fynn ${Date.now()}`,
@@ -76,7 +74,6 @@ export default function MFAEnroll({ onComplete, onCancel }: MFAEnrollProps) {
   }
 
   async function handleCancel() {
-    // Ruim de net-aangemaakte unverified factor op
     if (factorId) {
       await supabase.auth.mfa.unenroll({ factorId }).catch(() => {})
     }
@@ -86,8 +83,8 @@ export default function MFAEnroll({ onComplete, onCancel }: MFAEnrollProps) {
   return (
     <div className="max-w-md mx-auto">
       <div
-        className="rounded-2xl border p-6 transition-colors"
-        style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}
+        className="rounded-2xl p-6"
+        style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
       >
         <div className="flex items-center gap-3 mb-4">
           <div
@@ -103,52 +100,47 @@ export default function MFAEnroll({ onComplete, onCancel }: MFAEnrollProps) {
             <h2 className="text-lg font-semibold" style={{ color: 'var(--text)' }}>
               Tweestapsverificatie instellen
             </h2>
-            <p className="text-sm" style={{ color: 'var(--muted)' }}>
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>
               Beveilig je account met een authenticator app
             </p>
           </div>
         </div>
 
-        {/* Step 1: QR Code */}
         <div className="space-y-4">
+          {/* Step 1: QR Code */}
           <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg)' }}>
             <p className="text-sm mb-3" style={{ color: 'var(--muted)' }}>
-              <span className="font-medium" style={{ color: 'var(--text)' }}>Stap 1:</span>{' '}
+              <span style={{ color: 'var(--text)' }}>Stap 1:</span>{' '}
               Scan de QR-code met je authenticator app (bijv. Google Authenticator, Authy of 1Password).
             </p>
             {qr ? (
               <div className="flex justify-center">
                 <div
-                  className="p-3 rounded-lg border"
-                  style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--border)' }}
+                  className="p-3 rounded-xl"
+                  style={{ backgroundColor: '#FFFFFF', border: '1px solid var(--border)' }}
                 >
-                  <img
-                    src={qr}
-                    alt="QR Code voor MFA"
-                    className="w-48 h-48"
-                  />
+                  <img src={qr} alt="QR Code voor MFA" className="w-48 h-48" />
                 </div>
               </div>
             ) : (
               <div className="flex justify-center">
-                <div className="w-48 h-48 rounded-lg animate-pulse" style={{ backgroundColor: 'var(--tab-bg)' }} />
+                <div className="w-48 h-48 rounded-xl animate-pulse" style={{ backgroundColor: 'var(--tab-bg)' }} />
               </div>
             )}
 
-            {/* Manual secret fallback */}
             <div className="mt-3 text-center">
               <button
                 type="button"
                 onClick={() => setShowSecret(!showSecret)}
-                className="text-xs underline"
-                style={{ color: 'var(--muted)' }}
+                className="text-xs"
+                style={{ color: 'var(--muted)', textDecoration: 'underline' }}
               >
                 Kan je niet scannen? Voer de code handmatig in
               </button>
               {showSecret && secret && (
                 <div
-                  className="mt-2 border rounded-lg p-2"
-                  style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}
+                  className="mt-2 rounded-xl p-3"
+                  style={{ backgroundColor: 'var(--tab-bg)', border: '1px solid var(--border)' }}
                 >
                   <code className="text-xs break-all select-all" style={{ color: 'var(--text)' }}>
                     {secret}
@@ -161,7 +153,7 @@ export default function MFAEnroll({ onComplete, onCancel }: MFAEnrollProps) {
           {/* Step 2: Verify */}
           <div>
             <p className="text-sm mb-2" style={{ color: 'var(--muted)' }}>
-              <span className="font-medium" style={{ color: 'var(--text)' }}>Stap 2:</span>{' '}
+              <span style={{ color: 'var(--text)' }}>Stap 2:</span>{' '}
               Voer de 6-cijferige code in uit je authenticator app.
             </p>
             <input
@@ -175,39 +167,39 @@ export default function MFAEnroll({ onComplete, onCancel }: MFAEnrollProps) {
                 setVerifyCode(val)
               }}
               placeholder="000000"
-              className="w-full px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] rounded-xl border focus:outline-none focus:ring-2 focus:ring-[#1A3A2A]/20"
+              className="w-full px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] rounded-xl outline-none"
               style={{
-                backgroundColor: 'var(--bg)',
-                borderColor: 'var(--border)',
+                backgroundColor: 'var(--tab-bg)',
+                border: '1px solid var(--border)',
                 color: 'var(--text)',
               }}
             />
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-              <p className="text-sm text-red-600">{error}</p>
+            <div
+              className="rounded-xl p-3"
+              style={{ backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}
+            >
+              <p className="text-xs" style={{ color: '#EF4444' }}>{error}</p>
             </div>
           )}
 
           <div className="flex gap-3">
             <button
               onClick={handleCancel}
-              className="flex-1 px-4 py-2.5 text-sm font-medium rounded-xl transition-colors"
-              style={{
-                backgroundColor: 'var(--tab-bg)',
-                color: 'var(--text)',
-              }}
+              className="flex-1 py-3.5 text-sm rounded-xl transition-opacity"
+              style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--text)' }}
             >
               Annuleren
             </button>
             <button
               onClick={handleVerify}
               disabled={verifyCode.length !== 6 || loading}
-              className="flex-1 px-4 py-2.5 text-sm font-medium text-white rounded-xl transition-colors disabled:opacity-40"
-              style={{ backgroundColor: '#1A3A2A' }}
+              className="flex-1 py-3.5 text-sm font-semibold text-white rounded-xl transition-opacity disabled:opacity-30"
+              style={{ backgroundColor: 'var(--brand)' }}
             >
-              {loading ? 'Verifiëren...' : 'Activeren'}
+              {loading ? 'Verifiëren…' : 'Activeren'}
             </button>
           </div>
         </div>

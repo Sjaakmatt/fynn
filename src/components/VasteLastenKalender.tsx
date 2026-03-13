@@ -53,6 +53,71 @@ function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
 }
 
+// ─── Confirm Delete Dialog ────────────────────────────────────────────────────
+
+function ConfirmDeleteDialog({
+  itemName,
+  loading,
+  onConfirm,
+  onCancel,
+}: {
+  itemName: string
+  loading: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => { setMounted(true) }, [])
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onCancel])
+
+  if (!mounted) return null
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-end justify-center pb-8 px-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
+      onClick={onCancel}
+    >
+      <div
+        className="rounded-2xl p-5 w-full max-w-sm"
+        style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <p className="font-semibold text-sm mb-1" style={{ color: 'var(--text)' }}>
+          Vaste last verwijderen?
+        </p>
+        <p className="text-xs mb-4" style={{ color: 'var(--muted)' }}>
+          "{itemName}" wordt niet meer getoond in je kalender.
+        </p>
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 py-3.5 rounded-xl text-sm"
+            style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--text)' }}
+          >
+            Annuleren
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="flex-1 py-3.5 rounded-xl text-sm font-semibold disabled:opacity-30 transition-opacity"
+            style={{ backgroundColor: '#EF4444', color: 'white' }}
+          >
+            {loading ? 'Verwijderen...' : 'Verwijderen'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 // ─── Fullscreen Calendar Modal (mobile) ───────────────────────────────────────
 
 function FullscreenCalendar({
@@ -533,7 +598,7 @@ function DesktopCalendar({
                       }}
                     >
                       <div
-                        className="rounded-xl p-3 shadow-xl"
+                        className="rounded-xl p-3"
                         style={{
                           backgroundColor: 'var(--surface)',
                           border: '1px solid var(--border)',
@@ -610,16 +675,6 @@ export default function VasteLastenKalender() {
       })
   }, [])
 
-  // Escape for confirm delete
-  useEffect(() => {
-    if (!confirmDelete) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setConfirmDelete(null)
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [confirmDelete])
-
   async function deleteItem(merchantKey: string) {
     setDeleting(merchantKey)
     const res = await fetch('/api/calendar/delete', {
@@ -669,43 +724,14 @@ export default function VasteLastenKalender() {
         />
       )}
 
-      {/* Confirm delete overlay */}
+      {/* Confirm delete */}
       {confirmDelete && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4"
-          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
-          onClick={() => setConfirmDelete(null)}
-        >
-          <div
-            className="rounded-2xl p-5 w-full max-w-sm"
-            style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
-            onClick={e => e.stopPropagation()}
-          >
-            <p className="font-semibold text-sm mb-1" style={{ color: 'var(--text)' }}>
-              Vaste last verwijderen?
-            </p>
-            <p className="text-xs mb-4" style={{ color: 'var(--muted)' }}>
-              "{cleanName(items.find(i => i.merchantKey === confirmDelete)?.name ?? '')}" wordt niet meer getoond in je kalender.
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setConfirmDelete(null)}
-                className="flex-1 py-2 rounded-xl text-sm"
-                style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--text)' }}
-              >
-                Annuleren
-              </button>
-              <button
-                onClick={() => deleteItem(confirmDelete)}
-                disabled={deleting === confirmDelete}
-                className="flex-1 py-2 rounded-xl text-sm font-medium"
-                style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#EF4444' }}
-              >
-                {deleting === confirmDelete ? 'Verwijderen...' : 'Verwijderen'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDeleteDialog
+          itemName={cleanName(items.find(i => i.merchantKey === confirmDelete)?.name ?? '')}
+          loading={deleting === confirmDelete}
+          onConfirm={() => deleteItem(confirmDelete)}
+          onCancel={() => setConfirmDelete(null)}
+        />
       )}
 
       {/* Header card */}
@@ -721,7 +747,7 @@ export default function VasteLastenKalender() {
           </div>
           <div className="flex gap-1">
             {/* Desktop: inline toggle */}
-            <div className="hidden sm:flex gap-1 p-1 rounded-lg" style={{ backgroundColor: 'var(--tab-bg)' }}>
+            <div className="hidden sm:flex p-0.5 rounded-lg" style={{ backgroundColor: 'var(--tab-bg)' }}>
               {(['lijst', 'kalender'] as const).map(v => (
                 <button
                   key={v}

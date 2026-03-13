@@ -39,7 +39,6 @@ export default function OnboardingFlow({ userId, isPro }: Props) {
   const [loading, setLoading] = useState<string | null>(null)
   const [filter, setFilter] = useState<'NL' | 'BE'>('NL')
 
-  // Na bank connect: refresh en clean URL
   useEffect(() => {
     if (searchParams.get('connected') === 'true') {
       router.replace('/dashboard')
@@ -68,13 +67,13 @@ export default function OnboardingFlow({ userId, isPro }: Props) {
           <span className="text-white font-bold text-xl">F</span>
         </div>
         <h2
-          className="text-xl font-semibold mb-1"
+          className="text-lg font-semibold mb-1"
           style={{ color: isPro ? 'white' : 'var(--text)' }}
         >
           {isPro ? 'Welkom bij Fynn Pro' : 'Welkom bij Fynn'}
         </h2>
         <p
-          className="text-sm"
+          className="text-xs"
           style={{ color: isPro ? 'rgba(255,255,255,0.7)' : 'var(--muted)' }}
         >
           Koppel je bankrekening om te beginnen. Fynn analyseert alles automatisch.
@@ -97,7 +96,7 @@ export default function OnboardingFlow({ userId, isPro }: Props) {
                 style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
               >
                 <span className="text-base">{f.icon}</span>
-                <span className="text-xs font-medium text-white/80">{f.label}</span>
+                <span className="text-xs text-white/80">{f.label}</span>
               </div>
             ))}
           </div>
@@ -120,7 +119,7 @@ export default function OnboardingFlow({ userId, isPro }: Props) {
                 {item.n}
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>{item.title}</p>
+                <p className="text-sm" style={{ color: 'var(--text)' }}>{item.title}</p>
                 <p className="text-xs" style={{ color: 'var(--muted)' }}>{item.desc}</p>
               </div>
             </div>
@@ -131,7 +130,7 @@ export default function OnboardingFlow({ userId, isPro }: Props) {
       {/* ── Bank koppelen ── */}
       <div className="px-6 pb-6 space-y-3">
         <p
-          className="text-sm font-medium"
+          className="text-sm font-semibold"
           style={{ color: isPro ? 'rgba(255,255,255,0.9)' : 'var(--text)' }}
         >
           {BANKING_PROVIDER === 'plaid' ? 'Koppel je bank' : 'Selecteer je bank'}
@@ -139,19 +138,19 @@ export default function OnboardingFlow({ userId, isPro }: Props) {
 
         {BANKING_PROVIDER === 'plaid' ? (
           <PlaidLinkButton
-            className="w-full py-3 rounded-xl text-sm font-medium transition-all"
+            className="w-full py-3.5 rounded-xl text-sm font-semibold transition-opacity"
             style={isPro
               ? { backgroundColor: 'white', color: 'var(--brand)' }
               : { backgroundColor: 'var(--brand)', color: 'white' }
             }
           >
-            🏦 Bank koppelen
+            Bank koppelen
           </PlaidLinkButton>
         ) : (
           <>
             {/* Land toggle */}
             <div
-              className="flex p-1 rounded-xl"
+              className="flex p-0.5 rounded-xl"
               style={{ backgroundColor: isPro ? 'rgba(255,255,255,0.12)' : 'var(--tab-bg)' }}
             >
               {(['NL', 'BE'] as const).map(c => (
@@ -185,24 +184,30 @@ export default function OnboardingFlow({ userId, isPro }: Props) {
                     key={`${bank.name}-${bank.country}`}
                     onClick={() => connectEB(bank)}
                     disabled={isDisabled}
-                    className="py-2.5 px-3 rounded-xl text-sm font-medium text-left transition-all flex items-center justify-between"
+                    className="py-3 px-3 rounded-xl text-sm text-left transition-all flex items-center justify-between disabled:opacity-30"
                     style={isPro
                       ? {
                           backgroundColor: isLoading ? 'white' : 'rgba(255,255,255,0.12)',
                           color: isLoading ? 'var(--brand)' : 'white',
-                          opacity: isDisabled && !isLoading ? 0.4 : 1,
+                          opacity: isDisabled && !isLoading ? undefined : 1,
                         }
                       : {
                           backgroundColor: isLoading ? 'var(--brand)' : 'var(--tab-bg)',
                           color: isLoading ? 'white' : 'var(--text)',
                           border: '1px solid var(--border)',
-                          opacity: isDisabled && !isLoading ? 0.4 : 1,
+                          opacity: isDisabled && !isLoading ? undefined : 1,
                         }
                     }
                   >
-                    <span className="truncate">🏦 {bank.name}</span>
+                    <span className="truncate">{bank.name}</span>
                     {isLoading && (
-                      <span className="text-xs shrink-0 ml-1">...</span>
+                      <span
+                        className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent animate-spin shrink-0 ml-2"
+                        style={{
+                          borderColor: isLoading && isPro ? 'var(--brand)' : 'white',
+                          borderTopColor: 'transparent',
+                        }}
+                      />
                     )}
                   </button>
                 )
@@ -215,7 +220,7 @@ export default function OnboardingFlow({ userId, isPro }: Props) {
           className="text-center text-xs"
           style={{ color: isPro ? 'rgba(255,255,255,0.5)' : 'var(--muted)' }}
         >
-          🔒 PSD2 beveiligd · Alleen leestoegang · Nooit schrijftoegang
+          PSD2 beveiligd · Alleen leestoegang · Nooit schrijftoegang
         </p>
       </div>
 

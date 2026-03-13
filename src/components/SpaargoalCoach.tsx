@@ -74,7 +74,6 @@ function goalGradient(name: string): string {
   return gradients[idx]
 }
 
-/** Lock body scroll while mounted */
 function useScrollLock(active: boolean) {
   useEffect(() => {
     if (!active) return
@@ -83,7 +82,6 @@ function useScrollLock(active: boolean) {
   }, [active])
 }
 
-/** Escape key handler */
 function useEscape(active: boolean, onClose: () => void) {
   useEffect(() => {
     if (!active) return
@@ -98,7 +96,7 @@ function useEscape(active: boolean, onClose: () => void) {
 // ─── Goal Card (compact) ──────────────────────────────────────────────────────
 
 function GoalCard({ goal, onClick }: { goal: SavingsGoal; onClick: () => void }) {
-  const progressColor = goal.on_track ? '#4ade80' : goal.progress_pct > 50 ? '#f59e0b' : '#ef4444'
+  const progressColor = goal.on_track ? '#4ade80' : goal.progress_pct > 50 ? '#F59E0B' : '#EF4444'
 
   return (
     <button
@@ -123,10 +121,10 @@ function GoalCard({ goal, onClick }: { goal: SavingsGoal; onClick: () => void })
         )}
         <div className="absolute top-2 right-2">
           <span
-            className="text-xs font-semibold px-2 py-1 rounded-full"
+            className="text-xs font-medium px-2 py-1 rounded-xl"
             style={{
               backgroundColor: goal.on_track ? 'rgba(0,0,0,0.6)' : 'rgba(239,68,68,0.85)',
-              color: goal.on_track ? '#4ade80' : '#fff',
+              color: goal.on_track ? '#4ade80' : 'white',
               backdropFilter: 'blur(4px)',
             }}
           >
@@ -146,7 +144,7 @@ function GoalCard({ goal, onClick }: { goal: SavingsGoal; onClick: () => void })
 
         <div
           className="w-full rounded-full overflow-hidden mb-2"
-          style={{ height: 5, backgroundColor: 'var(--tab-bg)' }}
+          style={{ height: 4, backgroundColor: 'var(--tab-bg)' }}
         >
           <div
             className="h-full rounded-full transition-all"
@@ -155,13 +153,13 @@ function GoalCard({ goal, onClick }: { goal: SavingsGoal; onClick: () => void })
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-xs" style={{ color: 'var(--muted)' }}>
+          <span className="text-xs tabular-nums" style={{ color: 'var(--muted)' }}>
             {formatEuro(goal.current_amount)}
           </span>
-          <span className="text-xs font-semibold" style={{ color: progressColor }}>
+          <span className="text-xs font-semibold tabular-nums" style={{ color: progressColor }}>
             {goal.progress_pct.toFixed(0)}%
           </span>
-          <span className="text-xs" style={{ color: 'var(--muted)' }}>
+          <span className="text-xs tabular-nums" style={{ color: 'var(--muted)' }}>
             {formatEuro(goal.target_amount)}
           </span>
         </div>
@@ -196,7 +194,7 @@ function GoalDetail({
   useScrollLock(true)
   useEscape(true, onClose)
 
-  const progressColor = goal.on_track ? '#4ade80' : goal.progress_pct > 50 ? '#f59e0b' : '#ef4444'
+  const progressColor = goal.on_track ? '#4ade80' : goal.progress_pct > 50 ? '#F59E0B' : '#EF4444'
 
   function handleNotesChange(val: string) {
     setNotes(val)
@@ -268,10 +266,10 @@ function GoalDetail({
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex flex-col" style={{ backgroundColor: 'var(--bg)' }}>
+    <div className="fixed inset-0 z-[100] flex flex-col" style={{ backgroundColor: 'var(--bg)' }}>
       {/* Header */}
       <div
-        className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0"
+        className="flex items-center justify-between px-5 py-3 border-b flex-shrink-0"
         style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}
       >
         <button onClick={onClose} className="flex items-center gap-2 text-sm" style={{ color: 'var(--muted)' }}>
@@ -286,7 +284,7 @@ function GoalDetail({
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
 
-        {/* Hero foto — tap to upload on mobile */}
+        {/* Hero foto */}
         <div className="max-w-2xl mx-auto w-full px-4 mt-4">
           <div
             className="w-full relative cursor-pointer rounded-2xl"
@@ -301,16 +299,15 @@ function GoalDetail({
               </div>
             )}
 
-            {/* Upload overlay — visible on mobile tap, hover on desktop */}
             <div
               className="absolute inset-x-0 bottom-0 flex items-center justify-center py-2"
-              style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)' }}
+              style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
             >
               {uploadingPhoto ? (
                 <span className="text-white text-xs">Uploaden…</span>
               ) : (
                 <p className="text-white text-xs font-medium">
-                  📷 {goal.photo_url ? 'Foto wijzigen' : 'Foto toevoegen'}
+                  {goal.photo_url ? 'Foto wijzigen' : 'Foto toevoegen'}
                 </p>
               )}
             </div>
@@ -318,11 +315,10 @@ function GoalDetail({
             {/* Status badge */}
             <div className="absolute top-3 right-3">
               <span
-                className="text-xs font-semibold px-3 py-1.5 rounded-full"
+                className="text-xs font-medium px-3 py-1.5 rounded-xl"
                 style={{
                   backgroundColor: 'rgba(0,0,0,0.65)',
                   color: progressColor,
-                  backdropFilter: 'blur(6px)',
                 }}
               >
                 {goal.on_track ? '✓ Op koers' : '⚠ Achter op schema'}
@@ -335,9 +331,9 @@ function GoalDetail({
 
         {photoError && (
           <div className="max-w-2xl mx-auto px-4 mt-2">
-            <p className="px-4 py-2 rounded-xl text-xs"
-              style={{ backgroundColor: 'rgba(239,68,68,0.12)', color: '#ef4444' }}>
-              ⚠ {photoError}
+            <p className="p-3 rounded-xl text-xs"
+              style={{ backgroundColor: 'rgba(239,68,68,0.08)', color: '#EF4444' }}>
+              {photoError}
             </p>
           </div>
         )}
@@ -349,41 +345,41 @@ function GoalDetail({
             <div className="flex items-start justify-between mb-4">
               <div>
                 <p className="text-xs" style={{ color: 'var(--muted)' }}>Huidig gespaard</p>
-                <p className="text-3xl font-bold" style={{ color: 'var(--text)' }}>
+                <p className="text-2xl font-bold tabular-nums" style={{ color: 'var(--text)' }}>
                   {formatEuro(goal.current_amount)}
                 </p>
               </div>
               <div className="text-right">
                 <p className="text-xs" style={{ color: 'var(--muted)' }}>Doelbedrag</p>
-                <p className="text-xl font-semibold" style={{ color: 'var(--text)' }}>
+                <p className="text-lg font-semibold tabular-nums" style={{ color: 'var(--text)' }}>
                   {formatEuro(goal.target_amount)}
                 </p>
               </div>
             </div>
 
-            <div className="w-full rounded-full overflow-hidden mb-3" style={{ height: 10, backgroundColor: 'var(--tab-bg)' }}>
+            <div className="w-full rounded-full overflow-hidden mb-3" style={{ height: 6, backgroundColor: 'var(--tab-bg)' }}>
               <div
                 className="h-full rounded-full transition-all duration-700"
                 style={{ width: `${goal.progress_pct}%`, backgroundColor: progressColor }}
               />
             </div>
-            <p className="text-xs text-center mb-4" style={{ color: 'var(--muted)' }}>
+            <p className="text-xs text-center mb-4 tabular-nums" style={{ color: 'var(--muted)' }}>
               {goal.progress_pct.toFixed(0)}% · deadline {deadlineLabel(goal.deadline)}
             </p>
 
             <div className="grid grid-cols-3 gap-3">
               <div className="rounded-xl p-3 text-center" style={{ backgroundColor: 'var(--tab-bg)' }}>
-                <p className="text-base font-bold" style={{ color: 'var(--text)' }}>{formatEuro(goal.monthly_needed)}</p>
+                <p className="text-sm font-semibold tabular-nums" style={{ color: 'var(--text)' }}>{formatEuro(goal.monthly_needed)}</p>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>/maand nodig</p>
               </div>
               <div className="rounded-xl p-3 text-center" style={{ backgroundColor: 'var(--tab-bg)' }}>
-                <p className="text-base font-bold" style={{ color: 'var(--text)' }}>
+                <p className="text-sm font-semibold tabular-nums" style={{ color: 'var(--text)' }}>
                   {goal.months_left === 0 ? 'Nu' : `${goal.months_left}m`}
                 </p>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>resterend</p>
               </div>
               <div className="rounded-xl p-3 text-center" style={{ backgroundColor: 'var(--tab-bg)' }}>
-                <p className="text-base font-bold" style={{ color: 'var(--text)' }}>
+                <p className="text-sm font-semibold tabular-nums" style={{ color: 'var(--text)' }}>
                   {formatEuro(Math.max(0, goal.target_amount - goal.current_amount))}
                 </p>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>nog te gaan</p>
@@ -395,7 +391,7 @@ function GoalDetail({
           {goal.linked_accounts.length > 0 && (
             <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
               <div className="px-5 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
-                <p className="text-xs font-semibold" style={{ color: 'var(--muted)' }}>GEKOPPELDE REKENINGEN</p>
+                <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted)' }}>Gekoppelde rekeningen</p>
               </div>
               {goal.linked_accounts.map(acc => (
                 <div
@@ -404,13 +400,13 @@ function GoalDetail({
                   style={{ borderColor: 'var(--border)' }}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <span className="shrink-0">{acc.account_type === 'SAVINGS' ? '🐷' : '🏦'}</span>
+                    <span className="shrink-0 text-base">{acc.account_type === 'SAVINGS' ? '🐷' : '🏦'}</span>
                     <div className="min-w-0">
                       <p className="text-sm truncate" style={{ color: 'var(--text)' }}>{acc.account_name}</p>
                       <p className="text-xs truncate" style={{ color: 'var(--muted)' }}>{acc.iban}</p>
                     </div>
                   </div>
-                  <p className="text-sm font-semibold shrink-0 ml-3" style={{ color: 'var(--text)' }}>
+                  <p className="text-sm font-semibold tabular-nums shrink-0 ml-3" style={{ color: 'var(--text)' }}>
                     {formatEuro(acc.balance)}
                   </p>
                 </div>
@@ -421,7 +417,7 @@ function GoalDetail({
           {/* Notities */}
           <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
             <div className="px-5 py-3 border-b flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
-              <p className="text-xs font-semibold" style={{ color: 'var(--muted)' }}>NOTITIES</p>
+              <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted)' }}>Notities</p>
               {savingNotes && <p className="text-xs" style={{ color: 'var(--muted)' }}>Opslaan…</p>}
             </div>
             <textarea
@@ -437,13 +433,13 @@ function GoalDetail({
           {/* Fynn AI tip */}
           <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
             <div className="px-5 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
-              <p className="text-xs font-semibold" style={{ color: 'var(--muted)' }}>FYNN ADVIES</p>
+              <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted)' }}>Fynn tip</p>
             </div>
             <div className="px-5 py-4">
               {goal.ai_tip ? (
                 <>
                   <div className="flex items-center gap-1.5 mb-3">
-                    <span className="text-xs font-semibold" style={{ color: '#4ade80' }}>✦ Fynn zegt</span>
+                    <span className="text-xs font-medium" style={{ color: '#4ade80' }}>✦ Fynn zegt</span>
                     {goal.ai_tip_generated_at && (
                       <span className="text-xs" style={{ color: 'var(--muted)' }}>
                         · {new Date(goal.ai_tip_generated_at).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
@@ -451,7 +447,7 @@ function GoalDetail({
                     )}
                   </div>
                   <p className="text-sm leading-relaxed mb-4" style={{ color: 'var(--text)' }}>{goal.ai_tip}</p>
-                  <button onClick={fetchTip} disabled={loadingTip} className="text-xs" style={{ color: 'var(--muted)' }}>
+                  <button onClick={fetchTip} disabled={loadingTip} className="text-xs disabled:opacity-30" style={{ color: 'var(--muted)' }}>
                     {loadingTip ? 'Bezig…' : '↻ Nieuwe tip genereren'}
                   </button>
                 </>
@@ -459,13 +455,19 @@ function GoalDetail({
                 <button
                   onClick={fetchTip}
                   disabled={loadingTip}
-                  className="w-full py-4 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
+                  className="w-full py-3.5 rounded-xl text-sm font-medium transition-opacity disabled:opacity-30 flex items-center justify-center gap-2"
                   style={{ backgroundColor: 'var(--tab-bg)', color: loadingTip ? 'var(--muted)' : 'var(--text)', border: '1px dashed var(--border)' }}
                 >
                   {loadingTip ? (
-                    <><span className="animate-spin text-xs">◌</span> Fynn denkt na…</>
+                    <>
+                      <span
+                        className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent animate-spin"
+                        style={{ borderColor: 'var(--muted)', borderTopColor: 'transparent' }}
+                      />
+                      Fynn denkt na…
+                    </>
                   ) : (
-                    <>✦ Vraag Fynn om persoonlijk advies</>
+                    <>✦ Vraag Fynn om persoonlijke inzichten</>
                   )}
                 </button>
               )}
@@ -479,20 +481,20 @@ function GoalDetail({
             {showConfirmDelete ? (
               <div className="space-y-3">
                 <p className="text-sm text-center" style={{ color: 'var(--text)' }}>
-                  Doel "<strong>{goal.name}</strong>" definitief verwijderen?
+                  Doel &ldquo;{goal.name}&rdquo; definitief verwijderen?
                 </p>
-                <div className="flex gap-2">
+                <div className="flex gap-3">
                   <button
                     onClick={() => onDelete(goal.id)}
-                    className="flex-1 py-3 rounded-xl text-sm font-medium"
-                    style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444' }}
+                    className="flex-1 py-3.5 rounded-xl text-sm font-semibold text-white"
+                    style={{ backgroundColor: '#EF4444' }}
                   >
                     Ja, verwijderen
                   </button>
                   <button
                     onClick={() => setShowConfirmDelete(false)}
-                    className="flex-1 py-3 rounded-xl text-sm font-medium"
-                    style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--muted)' }}
+                    className="flex-1 py-3.5 rounded-xl text-sm"
+                    style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--text)' }}
                   >
                     Annuleren
                   </button>
@@ -598,15 +600,15 @@ function NewGoalForm({
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex flex-col" style={{ backgroundColor: 'var(--bg)' }}>
+    <div className="fixed inset-0 z-[100] flex flex-col" style={{ backgroundColor: 'var(--bg)' }}>
       {/* Header */}
       <div
-        className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0"
+        className="flex items-center justify-between px-5 py-3 border-b flex-shrink-0"
         style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}
       >
         <button
           onClick={onCancel}
-          className="text-sm font-medium px-3 py-1.5 rounded-lg transition-all"
+          className="text-sm px-3 py-1.5 rounded-xl transition-opacity"
           style={{ color: 'var(--text)', backgroundColor: 'var(--tab-bg)' }}
         >
           ← Annuleren
@@ -615,8 +617,8 @@ function NewGoalForm({
         <button
           onClick={handleSubmit}
           disabled={loading}
-          className="text-sm font-semibold px-3 py-1.5 rounded-lg transition-all text-white"
-          style={{ backgroundColor: loading ? 'var(--muted)' : 'var(--brand)' }}
+          className="text-sm font-semibold px-3 py-1.5 rounded-xl transition-opacity text-white disabled:opacity-30"
+          style={{ backgroundColor: 'var(--brand)' }}
         >
           {loading ? '…' : 'Opslaan'}
         </button>
@@ -639,17 +641,16 @@ function NewGoalForm({
                 style={{ backgroundColor: 'var(--tab-bg)' }}
               >
                 <span style={{ fontSize: 32 }}>📷</span>
-                <p className="text-sm font-medium" style={{ color: 'var(--muted)' }}>Foto toevoegen</p>
+                <p className="text-sm" style={{ color: 'var(--muted)' }}>Foto toevoegen</p>
                 <p className="text-xs" style={{ color: 'var(--muted)', opacity: 0.6 }}>Maak je doel tastbaar</p>
               </div>
             )}
-            {/* Bottom bar — always visible (works on mobile) */}
             {photoPreview && (
               <div
                 className="absolute inset-x-0 bottom-0 flex items-center justify-center py-2"
-                style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)' }}
+                style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
               >
-                <p className="text-xs font-medium text-white">📷 Foto wijzigen</p>
+                <p className="text-xs font-medium text-white">Foto wijzigen</p>
               </div>
             )}
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoSelect} />
@@ -660,7 +661,7 @@ function NewGoalForm({
 
           {/* Naam */}
           <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted)' }}>
+            <label className="block text-xs mb-1.5" style={{ color: 'var(--muted)' }}>
               Naam van je doel
             </label>
             <input
@@ -669,14 +670,14 @@ function NewGoalForm({
               onChange={e => setName(e.target.value)}
               placeholder="bijv. Vakantie Japan, Nieuwe auto, Eigen huis"
               className="w-full rounded-xl px-4 py-3 text-sm outline-none"
-              style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}
+              style={{ backgroundColor: 'var(--tab-bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
             />
           </div>
 
           {/* Bedrag + Deadline */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted)' }}>Doelbedrag (€)</label>
+              <label className="block text-xs mb-1.5" style={{ color: 'var(--muted)' }}>Doelbedrag (€)</label>
               <input
                 type="number"
                 value={targetAmount}
@@ -684,25 +685,25 @@ function NewGoalForm({
                 placeholder="5000"
                 min="1"
                 className="w-full rounded-xl px-4 py-3 text-sm outline-none"
-                style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}
+                style={{ backgroundColor: 'var(--tab-bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
               />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted)' }}>Deadline</label>
+              <label className="block text-xs mb-1.5" style={{ color: 'var(--muted)' }}>Deadline</label>
               <input
                 type="date"
                 value={deadline}
                 onChange={e => setDeadline(e.target.value)}
                 min={minDeadline}
                 className="w-full rounded-xl px-4 py-3 text-sm outline-none"
-                style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}
+                style={{ backgroundColor: 'var(--tab-bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
               />
             </div>
           </div>
 
           {/* Rekeningen */}
           <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted)' }}>
+            <label className="block text-xs mb-1.5" style={{ color: 'var(--muted)' }}>
               Welke rekeningen tellen mee?
             </label>
             {accounts.length === 0 ? (
@@ -718,19 +719,19 @@ function NewGoalForm({
                       onClick={() => toggleAccount(acc.id)}
                       className="w-full flex items-center justify-between rounded-xl px-4 py-3 transition-all"
                       style={{
-                        backgroundColor: selected ? 'rgba(26,58,42,0.25)' : 'var(--surface)',
-                        border: `1px solid ${selected ? 'rgba(74,222,128,0.3)' : 'var(--border)'}`,
+                        backgroundColor: selected ? 'color-mix(in srgb, var(--brand) 12%, transparent)' : 'var(--tab-bg)',
+                        border: `1px solid ${selected ? 'color-mix(in srgb, var(--brand) 30%, transparent)' : 'var(--border)'}`,
                       }}
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <span className="shrink-0">{acc.account_type === 'SAVINGS' ? '🐷' : '🏦'}</span>
+                        <span className="shrink-0 text-base">{acc.account_type === 'SAVINGS' ? '🐷' : '🏦'}</span>
                         <div className="text-left min-w-0">
-                          <p className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>{acc.account_name}</p>
+                          <p className="text-sm truncate" style={{ color: 'var(--text)' }}>{acc.account_name}</p>
                           <p className="text-xs truncate" style={{ color: 'var(--muted)' }}>{acc.iban}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-3 shrink-0 ml-2">
-                        <span className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+                        <span className="text-sm font-semibold tabular-nums" style={{ color: 'var(--text)' }}>
                           {formatEuro(acc.balance)}
                         </span>
                         <div
@@ -752,7 +753,7 @@ function NewGoalForm({
 
           {/* Notities */}
           <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted)' }}>
+            <label className="block text-xs mb-1.5" style={{ color: 'var(--muted)' }}>
               Notities <span style={{ opacity: 0.5 }}>(optioneel)</span>
             </label>
             <textarea
@@ -761,13 +762,13 @@ function NewGoalForm({
               placeholder="Waarom wil je dit? Wat motiveert je? Schrijf het hier op…"
               rows={3}
               className="w-full rounded-xl px-4 py-3 text-sm outline-none resize-none"
-              style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', caretColor: 'var(--brand)' }}
+              style={{ backgroundColor: 'var(--tab-bg)', border: '1px solid var(--border)', color: 'var(--text)', caretColor: 'var(--brand)' }}
             />
           </div>
 
           {error && (
-            <p className="text-xs px-3 py-2 rounded-xl"
-              style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+            <p className="text-xs p-3 rounded-xl"
+              style={{ backgroundColor: 'rgba(239,68,68,0.08)', color: '#EF4444' }}>
               {error}
             </p>
           )}
@@ -831,7 +832,10 @@ export default function SpaargoalCoach() {
     return (
       <div className="rounded-2xl p-8 flex items-center justify-center"
         style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>Laden…</p>
+        <div
+          className="w-5 h-5 rounded-full border-2 border-t-transparent animate-spin"
+          style={{ borderColor: 'var(--brand)', borderTopColor: 'transparent' }}
+        />
       </div>
     )
   }
@@ -860,7 +864,7 @@ export default function SpaargoalCoach() {
             </div>
             <button
               onClick={() => setShowForm(true)}
-              className="px-4 py-2 rounded-xl text-sm font-medium text-white flex items-center gap-1.5"
+              className="px-4 py-2 rounded-xl text-sm font-semibold text-white flex items-center gap-1.5"
               style={{ backgroundColor: 'var(--brand)' }}
             >
               + Nieuw doel
@@ -871,11 +875,11 @@ export default function SpaargoalCoach() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs" style={{ color: 'var(--muted)' }}>Totaal voortgang</span>
-                <span className="text-xs font-semibold" style={{ color: 'var(--text)' }}>
+                <span className="text-xs font-semibold tabular-nums" style={{ color: 'var(--text)' }}>
                   {formatEuro(totalCurrent)} / {formatEuro(totalTarget)}
                 </span>
               </div>
-              <div className="w-full rounded-full overflow-hidden" style={{ height: 5, backgroundColor: 'var(--tab-bg)' }}>
+              <div className="w-full rounded-full overflow-hidden" style={{ height: 4, backgroundColor: 'var(--tab-bg)' }}>
                 <div
                   className="h-full rounded-full transition-all duration-700"
                   style={{ width: `${overallProgress}%`, backgroundColor: 'var(--brand)' }}
@@ -888,14 +892,19 @@ export default function SpaargoalCoach() {
         {/* Lege state */}
         {goals.length === 0 && (
           <div className="rounded-2xl p-8 text-center" style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
-            <p className="text-4xl mb-3">🎯</p>
-            <p className="text-sm font-medium mb-1" style={{ color: 'var(--text)' }}>Nog geen spaardoelen</p>
+            <div
+              className="w-12 h-12 rounded-full mx-auto mb-3 flex items-center justify-center"
+              style={{ backgroundColor: 'color-mix(in srgb, var(--brand) 10%, transparent)' }}
+            >
+              <span className="text-lg">🎯</span>
+            </div>
+            <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text)' }}>Nog geen spaardoelen</p>
             <p className="text-xs mb-4" style={{ color: 'var(--muted)' }}>
               Maak je eerste doel aan en Fynn houdt bij of je op schema ligt.
             </p>
             <button
               onClick={() => setShowForm(true)}
-              className="px-6 py-3 rounded-xl text-sm font-medium text-white"
+              className="px-6 py-3.5 rounded-xl text-sm font-semibold text-white"
               style={{ backgroundColor: 'var(--brand)' }}
             >
               Eerste doel aanmaken

@@ -1,3 +1,4 @@
+// src/components/HealthScore.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -48,7 +49,7 @@ export default function HealthScore() {
   return (
     <div className="rounded-2xl overflow-hidden"
       style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
-      
+
       <div className="px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
         <h2 className="font-semibold text-sm" style={{ color: 'var(--text)' }}>
           Financiële Gezondheidscore
@@ -81,7 +82,7 @@ export default function HealthScore() {
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <p className="text-3xl font-bold" style={{ color: data.color }}>
+              <p className="text-2xl font-bold tabular-nums" style={{ color: data.color }}>
                 {data.score}
               </p>
               <p className="text-xs" style={{ color: 'var(--muted)' }}>/100</p>
@@ -89,21 +90,21 @@ export default function HealthScore() {
           </div>
 
           <div className="flex-1">
-            <p className="text-xl font-semibold mb-1" style={{ color: 'var(--text)' }}>
+            <p className="text-lg font-semibold mb-1" style={{ color: 'var(--text)' }}>
               {data.label}
             </p>
             <div className="space-y-1.5">
               <div className="flex justify-between text-xs">
                 <span style={{ color: 'var(--muted)' }}>Spaarquote</span>
-                <span style={{ color: 'var(--text)' }}>{data.stats.spaarquote}%</span>
+                <span className="tabular-nums" style={{ color: 'var(--text)' }}>{data.stats.spaarquote}%</span>
               </div>
               <div className="flex justify-between text-xs">
                 <span style={{ color: 'var(--muted)' }}>Abonnementslast</span>
-                <span style={{ color: 'var(--text)' }}>{data.stats.aboPct}%</span>
+                <span className="tabular-nums" style={{ color: 'var(--text)' }}>{data.stats.aboPct}%</span>
               </div>
               <div className="flex justify-between text-xs">
                 <span style={{ color: 'var(--muted)' }}>Uitgaven/inkomen</span>
-                <span style={{ color: 'var(--text)' }}>{data.stats.uitgavenRatio}%</span>
+                <span className="tabular-nums" style={{ color: 'var(--text)' }}>{data.stats.uitgavenRatio}%</span>
               </div>
             </div>
           </div>
@@ -120,9 +121,9 @@ export default function HealthScore() {
             <div key={item.label}>
               <div className="flex justify-between text-xs mb-1">
                 <span style={{ color: 'var(--muted)' }}>{item.label}</span>
-                <span style={{ color: 'var(--text)' }}>{item.score}/{item.max}</span>
+                <span className="tabular-nums" style={{ color: 'var(--text)' }}>{item.score}/{item.max}</span>
               </div>
-              <div className="h-1.5 rounded-full overflow-hidden"
+              <div className="h-1 rounded-full overflow-hidden"
                 style={{ backgroundColor: 'var(--tab-bg)' }}>
                 <div
                   className="h-full rounded-full transition-all duration-700"
@@ -139,7 +140,7 @@ export default function HealthScore() {
         {/* Deel knop */}
         <button
           onClick={shareScore}
-          className="w-full py-2.5 rounded-xl text-sm font-medium transition-all"
+          className="w-full py-3 rounded-xl text-sm font-medium transition-all"
           style={{
             backgroundColor: copied ? 'rgba(74,222,128,0.15)' : 'var(--tab-bg)',
             color: copied ? '#4ADE80' : 'var(--text)',

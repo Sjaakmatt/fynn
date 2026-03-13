@@ -55,17 +55,17 @@ export default function LoginPage() {
       {/* Links — brand panel */}
       <div
         className="hidden lg:flex flex-col justify-between w-96 p-10 text-white"
-        style={{ backgroundColor: 'var(--brand, #1A3A2A)' }}
+        style={{ backgroundColor: 'var(--brand)' }}
       >
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center">
-            <span className="text-white text-xs font-bold">F</span>
+          <div className="w-7 h-7 rounded-xl bg-white/10 flex items-center justify-center">
+            <span className="text-white text-xs font-semibold">F</span>
           </div>
           <span className="font-semibold">Fynn</span>
         </div>
         <div>
           <p className="text-2xl font-semibold leading-snug mb-4">
-            "Ik wist niet waar mijn geld naartoe ging. Nu wel."
+            &ldquo;Ik wist niet waar mijn geld naartoe ging. Nu wel.&rdquo;
           </p>
           <p className="text-sm opacity-60">— Gebruiker uit Amsterdam</p>
         </div>
@@ -73,14 +73,16 @@ export default function LoginPage() {
           {[
             'Bankrekening koppelen in 3 minuten',
             'AI analyseert al je uitgaven',
-            'Elke week een persoonlijk advies',
+            'Elke week persoonlijke inzichten',
           ].map(item => (
             <div key={item} className="flex items-center gap-2">
               <div
                 className="w-4 h-4 rounded-full flex items-center justify-center"
                 style={{ backgroundColor: 'rgba(74,222,128,0.2)' }}
               >
-                <span style={{ color: '#4ADE80', fontSize: 9 }}>✓</span>
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
               </div>
               <p className="text-sm opacity-80">{item}</p>
             </div>
@@ -91,7 +93,6 @@ export default function LoginPage() {
       {/* Rechts — form */}
       <div className="flex-1 flex items-center justify-center px-6 py-12 relative">
 
-        {/* Theme toggle */}
         <div className="absolute top-4 right-4">
           <ThemeToggle />
         </div>
@@ -101,10 +102,10 @@ export default function LoginPage() {
           {/* Mobile logo */}
           <div className="flex items-center gap-2 mb-8 lg:hidden">
             <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: 'var(--brand, #1A3A2A)' }}
+              className="w-7 h-7 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: 'var(--brand)' }}
             >
-              <span className="text-white text-xs font-bold">F</span>
+              <span className="text-white text-xs font-semibold">F</span>
             </div>
             <span className="font-semibold" style={{ color: 'var(--text)' }}>Fynn</span>
           </div>
@@ -112,28 +113,36 @@ export default function LoginPage() {
           {/* ── Reset password sent ── */}
           {resetSent ? (
             <div className="text-center space-y-4">
-              <div className="text-4xl">📬</div>
-              <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>
+              <div
+                className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto"
+                style={{ backgroundColor: 'color-mix(in srgb, var(--brand) 10%, transparent)' }}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="4" width="20" height="16" rx="2" />
+                  <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                </svg>
+              </div>
+              <h1 className="text-lg font-semibold" style={{ color: 'var(--text)' }}>
                 Check je inbox
               </h1>
-              <p className="text-sm" style={{ color: 'var(--muted)' }}>
-                We hebben een link naar <strong style={{ color: 'var(--text)' }}>{email}</strong> gestuurd
+              <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                We hebben een link naar <span style={{ color: 'var(--text)' }}>{email}</span> gestuurd
                 waarmee je je wachtwoord kunt resetten.
               </p>
               <button
                 onClick={() => { setResetMode(false); setResetSent(false); setError('') }}
-                className="text-sm font-medium"
-                style={{ color: 'var(--brand, #1A3A2A)' }}
+                className="text-sm font-semibold"
+                style={{ color: 'var(--brand)' }}
               >
                 Terug naar inloggen
               </button>
             </div>
           ) : resetMode ? (
             <>
-              <h1 className="text-2xl font-semibold mb-1" style={{ color: 'var(--text)' }}>
+              <h1 className="text-lg font-semibold mb-1" style={{ color: 'var(--text)' }}>
                 Wachtwoord vergeten?
               </h1>
-              <p className="text-sm mb-8" style={{ color: 'var(--muted)' }}>
+              <p className="text-xs mb-8" style={{ color: 'var(--muted)' }}>
                 Vul je e-mailadres in en we sturen je een resetlink.
               </p>
 
@@ -144,9 +153,9 @@ export default function LoginPage() {
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   autoFocus
-                  className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all focus:ring-2"
+                  className="w-full rounded-xl px-4 py-3 text-sm outline-none"
                   style={{
-                    backgroundColor: 'var(--surface)',
+                    backgroundColor: 'var(--tab-bg)',
                     border: '1px solid var(--border)',
                     color: 'var(--text)',
                   }}
@@ -154,24 +163,24 @@ export default function LoginPage() {
                 />
 
                 {error && (
-                  <p className="text-sm px-1" style={{ color: '#EF4444' }}>{error}</p>
+                  <p className="text-xs px-1" style={{ color: '#EF4444' }}>{error}</p>
                 )}
 
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full rounded-xl px-4 py-3 text-sm font-medium text-white disabled:opacity-50 transition-opacity"
-                  style={{ backgroundColor: 'var(--brand, #1A3A2A)' }}
+                  className="w-full rounded-xl py-3.5 text-sm font-semibold text-white disabled:opacity-30 transition-opacity"
+                  style={{ backgroundColor: 'var(--brand)' }}
                 >
-                  {loading ? 'Versturen...' : 'Resetlink versturen'}
+                  {loading ? 'Versturen…' : 'Resetlink versturen'}
                 </button>
               </form>
 
-              <p className="text-sm text-center mt-6" style={{ color: 'var(--muted)' }}>
+              <p className="text-xs text-center mt-6" style={{ color: 'var(--muted)' }}>
                 <button
                   onClick={() => { setResetMode(false); setError('') }}
-                  className="font-medium"
-                  style={{ color: 'var(--brand, #1A3A2A)' }}
+                  className="font-semibold"
+                  style={{ color: 'var(--brand)' }}
                 >
                   Terug naar inloggen
                 </button>
@@ -179,10 +188,10 @@ export default function LoginPage() {
             </>
           ) : (
             <>
-              <h1 className="text-2xl font-semibold mb-1" style={{ color: 'var(--text)' }}>
+              <h1 className="text-lg font-semibold mb-1" style={{ color: 'var(--text)' }}>
                 Welkom terug
               </h1>
-              <p className="text-sm mb-8" style={{ color: 'var(--muted)' }}>
+              <p className="text-xs mb-8" style={{ color: 'var(--muted)' }}>
                 Log in om je financieel overzicht te bekijken.
               </p>
 
@@ -192,9 +201,9 @@ export default function LoginPage() {
                   placeholder="E-mailadres"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all focus:ring-2"
+                  className="w-full rounded-xl px-4 py-3 text-sm outline-none"
                   style={{
-                    backgroundColor: 'var(--surface)',
+                    backgroundColor: 'var(--tab-bg)',
                     border: '1px solid var(--border)',
                     color: 'var(--text)',
                   }}
@@ -205,9 +214,9 @@ export default function LoginPage() {
                   placeholder="Wachtwoord"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all focus:ring-2"
+                  className="w-full rounded-xl px-4 py-3 text-sm outline-none"
                   style={{
-                    backgroundColor: 'var(--surface)',
+                    backgroundColor: 'var(--tab-bg)',
                     border: '1px solid var(--border)',
                     color: 'var(--text)',
                   }}
@@ -215,7 +224,7 @@ export default function LoginPage() {
                 />
 
                 {error && (
-                  <p className="text-sm px-1" style={{ color: '#EF4444' }}>{error}</p>
+                  <p className="text-xs px-1" style={{ color: '#EF4444' }}>{error}</p>
                 )}
 
                 <div className="flex justify-end">
@@ -232,16 +241,16 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full rounded-xl px-4 py-3 text-sm font-medium text-white disabled:opacity-50 transition-opacity"
-                  style={{ backgroundColor: 'var(--brand, #1A3A2A)' }}
+                  className="w-full rounded-xl py-3.5 text-sm font-semibold text-white disabled:opacity-30 transition-opacity"
+                  style={{ backgroundColor: 'var(--brand)' }}
                 >
-                  {loading ? 'Inloggen...' : 'Inloggen'}
+                  {loading ? 'Inloggen…' : 'Inloggen'}
                 </button>
               </form>
 
-              <p className="text-sm text-center mt-6" style={{ color: 'var(--muted)' }}>
+              <p className="text-xs text-center mt-6" style={{ color: 'var(--muted)' }}>
                 Nog geen account?{' '}
-                <a href="/signup" className="font-medium" style={{ color: 'var(--brand, #1A3A2A)' }}>
+                <a href="/signup" className="font-semibold" style={{ color: 'var(--brand)' }}>
                   Gratis aanmelden
                 </a>
               </p>

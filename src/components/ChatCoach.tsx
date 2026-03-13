@@ -76,7 +76,7 @@ export default function ChatCoach({ embedded = false }: Props) {
                 <button
                   key={q}
                   onClick={() => sendMessage(q)}
-                  className="text-xs px-3 py-2 rounded-lg transition-colors"
+                  className="text-xs px-3 py-2 rounded-xl transition-colors"
                   style={{
                     backgroundColor: 'var(--tab-bg)',
                     color: 'var(--muted)',
@@ -95,7 +95,7 @@ export default function ChatCoach({ embedded = false }: Props) {
                 <div
                   className="max-w-[85%] px-4 py-3 text-sm leading-relaxed"
                   style={msg.role === 'user'
-                    ? { backgroundColor: 'var(--brand)', color: '#FFFFFF', borderRadius: '16px 16px 4px 16px' }
+                    ? { backgroundColor: 'var(--brand)', color: 'white', borderRadius: '16px 16px 4px 16px' }
                     : { backgroundColor: 'var(--tab-bg)', color: 'var(--text)', borderRadius: '16px 16px 16px 4px' }
                   }
                 >
@@ -138,8 +138,8 @@ export default function ChatCoach({ embedded = false }: Props) {
           <button
             onClick={() => sendMessage(input)}
             disabled={loading || !input.trim()}
-            className="px-4 py-3 rounded-xl text-sm font-medium disabled:opacity-40 transition-opacity shrink-0"
-            style={{ backgroundColor: 'var(--brand)', color: '#FFFFFF' }}
+            className="px-4 py-3 rounded-xl text-sm font-semibold disabled:opacity-30 transition-opacity shrink-0"
+            style={{ backgroundColor: 'var(--brand)', color: 'white' }}
           >
             →
           </button>

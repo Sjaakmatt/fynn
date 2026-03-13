@@ -155,7 +155,7 @@ Schrijf in jij-vorm, casual maar slim. Geen bullet points. Geen disclaimers. Gee
 
     // ── 6. Genereer + sla op ──────────────────────────────────────────────────
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5-20250514',
+      model: 'claude-sonnet-4-5',
       max_tokens: 300,
       messages: [{ role: 'user', content }],
     })

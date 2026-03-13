@@ -154,11 +154,10 @@ export default function CategoryBreakdown({ sortedCategories: initialCategories,
           </p>
         </div>
 
-        {/* Maand selector */}
         <select
           value={selectedMonth}
           onChange={e => setSelectedMonth(e.target.value)}
-          className="text-xs rounded-lg px-2 py-1.5"
+          className="text-xs rounded-xl px-3 py-1.5"
           style={{
             backgroundColor: 'var(--tab-bg)',
             border: '1px solid var(--border)',
@@ -176,7 +175,7 @@ export default function CategoryBreakdown({ sortedCategories: initialCategories,
       {loadingMonth ? (
         <div className="px-5 py-8 text-center">
           <div className="w-5 h-5 border-2 rounded-full animate-spin mx-auto"
-            style={{ borderColor: 'var(--border)', borderTopColor: 'var(--brand)' }} />
+            style={{ borderColor: 'var(--brand)', borderTopColor: 'transparent' }} />
           <p className="text-xs mt-2" style={{ color: 'var(--muted)' }}>Laden...</p>
         </div>
       ) : categories.length === 0 ? (
@@ -203,9 +202,9 @@ export default function CategoryBreakdown({ sortedCategories: initialCategories,
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-3">
-                      <span className="text-lg">{CATEGORY_ICONS[cat] ?? '📦'}</span>
+                      <span className="text-base">{CATEGORY_ICONS[cat] ?? '📦'}</span>
                       <div>
-                        <p className="text-sm font-medium capitalize" style={{ color: 'var(--text)' }}>
+                        <p className="text-sm capitalize" style={{ color: 'var(--text)' }}>
                           {cat}
                         </p>
                         <p className="text-xs" style={{ color: 'var(--muted)' }}>
@@ -214,16 +213,16 @@ export default function CategoryBreakdown({ sortedCategories: initialCategories,
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+                      <p className="text-sm font-semibold tabular-nums" style={{ color: 'var(--text)' }}>
                         €{data.total.toFixed(0)}
                       </p>
-                      <span style={{ color: 'var(--muted)', fontSize: 12 }}>
-                        {isExpanded ? '▲' : '▼'}
+                      <span className="text-xs" style={{ color: 'var(--muted)' }}>
+                        {isExpanded ? '↑' : '↓'}
                       </span>
                     </div>
                   </div>
-                  <div className="h-1 rounded-full overflow-hidden ml-8"
-                    style={{ backgroundColor: 'var(--bg)' }}>
+                  <div className="h-1 rounded-full overflow-hidden ml-7"
+                    style={{ backgroundColor: 'var(--tab-bg)' }}>
                     <div className="h-full rounded-full transition-all duration-500"
                       style={{ width: `${pct}%`, backgroundColor: 'var(--brand)' }} />
                   </div>
@@ -234,7 +233,7 @@ export default function CategoryBreakdown({ sortedCategories: initialCategories,
                     {isLoading ? (
                       <div className="px-5 py-6 text-center">
                         <div className="w-5 h-5 border-2 rounded-full animate-spin mx-auto"
-                          style={{ borderColor: 'var(--border)', borderTopColor: 'var(--brand)' }} />
+                          style={{ borderColor: 'var(--brand)', borderTopColor: 'transparent' }} />
                       </div>
                     ) : catTransactions.length === 0 ? (
                       <p className="px-5 py-4 text-sm" style={{ color: 'var(--muted)' }}>
@@ -246,7 +245,7 @@ export default function CategoryBreakdown({ sortedCategories: initialCategories,
                           className="px-5 py-3 flex items-center justify-between gap-3"
                           style={{ borderBottom: '1px solid var(--border)' }}>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>
+                            <p className="text-sm truncate" style={{ color: 'var(--text)' }}>
                               {tx.description}
                             </p>
                             <p className="text-xs" style={{ color: 'var(--muted)' }}>
@@ -255,7 +254,7 @@ export default function CategoryBreakdown({ sortedCategories: initialCategories,
                               })}
                             </p>
                           </div>
-                          <p className="text-sm font-medium flex-shrink-0"
+                          <p className="text-sm tabular-nums flex-shrink-0"
                             style={{ color: tx.amount < 0 ? 'var(--text)' : '#4ADE80' }}>
                             {tx.amount < 0 ? '-' : '+'}€{Math.abs(tx.amount).toFixed(2)}
                           </p>
@@ -263,13 +262,13 @@ export default function CategoryBreakdown({ sortedCategories: initialCategories,
                             value={tx.category}
                             disabled={updating === tx.id}
                             onChange={(e) => updateCategory(tx.id, e.target.value, cat)}
-                            className="text-xs rounded-lg px-2 py-1.5 flex-shrink-0"
+                            className="text-xs rounded-xl px-2 py-1.5 flex-shrink-0"
                             style={{
                               backgroundColor: 'var(--surface)',
                               border: '1px solid var(--border)',
                               color: 'var(--text)',
                               fontFamily: 'inherit',
-                              opacity: updating === tx.id ? 0.5 : 1,
+                              opacity: updating === tx.id ? 0.3 : 1,
                               cursor: updating === tx.id ? 'not-allowed' : 'pointer',
                               maxWidth: 130,
                             }}

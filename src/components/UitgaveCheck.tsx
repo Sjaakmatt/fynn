@@ -1,3 +1,4 @@
+// src/components/UitgaveCheck.tsx
 'use client'
 
 import { useState } from 'react'
@@ -36,7 +37,7 @@ export default function UitgaveCheck() {
   return (
     <div className="rounded-2xl overflow-hidden"
       style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
-      
+
       <div className="px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
         <h2 className="font-semibold text-sm" style={{ color: 'var(--text)' }}>Uitgave Check</h2>
         <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>Kan ik dit betalen?</p>
@@ -52,10 +53,10 @@ export default function UitgaveCheck() {
               onChange={e => setBedrag(e.target.value)}
               placeholder="0"
               className="w-full rounded-xl pl-7 pr-3 py-3 text-sm outline-none"
-              style={{ 
-                backgroundColor: 'var(--tab-bg)', 
+              style={{
+                backgroundColor: 'var(--tab-bg)',
                 color: 'var(--text)',
-                border: '1px solid var(--border)'
+                border: '1px solid var(--border)',
               }}
             />
           </div>
@@ -66,19 +67,19 @@ export default function UitgaveCheck() {
             onKeyDown={e => e.key === 'Enter' && handleCheck()}
             placeholder="Waarvoor?"
             className="flex-1 rounded-xl px-4 py-3 text-sm outline-none"
-            style={{ 
-              backgroundColor: 'var(--tab-bg)', 
+            style={{
+              backgroundColor: 'var(--tab-bg)',
               color: 'var(--text)',
-              border: '1px solid var(--border)'
+              border: '1px solid var(--border)',
             }}
           />
           <button
             onClick={handleCheck}
             disabled={loading || !bedrag}
-            className="px-4 py-3 rounded-xl text-sm font-medium disabled:opacity-40 transition-opacity"
-            style={{ backgroundColor: 'var(--brand)', color: '#FFFFFF' }}
+            className="px-4 py-3 rounded-xl text-sm font-semibold disabled:opacity-30 transition-opacity"
+            style={{ backgroundColor: 'var(--brand)', color: 'white' }}
           >
-            {loading ? '...' : 'Check'}
+            {loading ? '…' : 'Check'}
           </button>
         </div>
 
@@ -86,9 +87,9 @@ export default function UitgaveCheck() {
           <div
             className="rounded-xl p-4 text-sm leading-relaxed"
             style={{
-              backgroundColor: isPositief ? 'rgba(74, 222, 128, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-              border: `1px solid ${isPositief ? 'rgba(74, 222, 128, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
-              color: 'var(--text)'
+              backgroundColor: isPositief ? 'rgba(74,222,128,0.08)' : 'rgba(239,68,68,0.08)',
+              border: `1px solid ${isPositief ? 'rgba(74,222,128,0.25)' : 'rgba(239,68,68,0.25)'}`,
+              color: 'var(--text)',
             }}
           >
             {advies}

@@ -1,6 +1,5 @@
-'use client'
-
 // src/app/sync/page.tsx
+'use client'
 
 import { useEffect, useState, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -89,24 +88,22 @@ function SyncContent() {
       // Stap 3: Vaste lasten detecteren
       setStepStatus('recurring', 'active')
       setCurrentStep(2)
-      const recRes = await fetch("/api/sync/recurring", { method: "POST" });
-      if (!recRes.ok) throw new Error("Recurring detect mislukt");
+      const recRes = await fetch('/api/sync/recurring', { method: 'POST' })
+      if (!recRes.ok) throw new Error('Recurring detect mislukt')
       setStepStatus('recurring', 'done')
 
-      // Stap 4: Dashboard klaarzetten (kleine delay voor gevoel van afronding)
+      // Stap 4: Dashboard klaarzetten
       setStepStatus('dashboard', 'active')
       setCurrentStep(3)
       await new Promise(r => setTimeout(r, 1200))
       setStepStatus('dashboard', 'done')
 
-      // Klaar!
       setDone(true)
       setTimeout(() => router.push('/dashboard?connected=true'), 1500)
 
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Er ging iets mis'
       setError(msg)
-      // Zet actieve stap op error
       setSteps(prev => prev.map(s => s.status === 'active' ? { ...s, status: 'error' } : s))
     }
   }
@@ -119,12 +116,8 @@ function SyncContent() {
       alignItems: 'center',
       justifyContent: 'center',
       padding: '24px',
-      fontFamily: "'DM Sans', system-ui, sans-serif",
     }}>
-      {/* Google Font */}
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
-
         @keyframes pulse-ring {
           0% { transform: scale(0.9); opacity: 0.8; }
           50% { transform: scale(1.1); opacity: 0.4; }
@@ -176,16 +169,13 @@ function SyncContent() {
             margin: '0 auto 16px',
             boxShadow: '0 0 40px rgba(74,222,128,0.2)',
           }}>
-            <span style={{ color: 'white', fontWeight: 700, fontSize: '22px', fontFamily: "'DM Sans', sans-serif" }}>F</span>
+            <span style={{ color: 'white', fontWeight: 600, fontSize: '22px' }}>F</span>
           </div>
 
           {done ? (
             <div style={{ animation: 'fade-in-up 0.5s ease forwards' }}>
-              <h1 style={{
-                fontSize: '22px', fontWeight: 600, color: '#f0fdf4',
-                margin: '0 0 8px', fontFamily: "'DM Sans', sans-serif",
-              }}>
-                Fynn is klaar 🎉
+              <h1 style={{ fontSize: '22px', fontWeight: 600, color: '#f0fdf4', margin: '0 0 8px' }}>
+                Fynn is klaar
               </h1>
               <p style={{ fontSize: '14px', color: '#4ade80', margin: 0 }}>
                 Je wordt doorgestuurd naar je dashboard
@@ -200,21 +190,17 @@ function SyncContent() {
               <button
                 onClick={() => router.push('/dashboard')}
                 style={{
-                  marginTop: '16px', padding: '10px 20px',
+                  marginTop: '16px', padding: '14px 20px',
                   backgroundColor: '#1a5c3a', color: 'white',
-                  border: 'none', borderRadius: '10px',
-                  fontSize: '13px', cursor: 'pointer',
-                  fontFamily: "'DM Sans', sans-serif",
+                  border: 'none', borderRadius: '12px',
+                  fontSize: '13px', fontWeight: 600, cursor: 'pointer',
                 }}>
-                Toch naar dashboard →
+                Toch naar dashboard
               </button>
             </div>
           ) : (
             <div>
-              <h1 style={{
-                fontSize: '22px', fontWeight: 600, color: '#f0fdf4',
-                margin: '0 0 8px', fontFamily: "'DM Sans', sans-serif",
-              }}>
+              <h1 style={{ fontSize: '22px', fontWeight: 600, color: '#f0fdf4', margin: '0 0 8px' }}>
                 Fynn analyseert je financiën
               </h1>
               <p style={{ fontSize: '14px', color: '#6b7280', margin: 0 }}>
@@ -252,7 +238,7 @@ function SyncContent() {
             <p style={{
               textAlign: 'center', marginTop: '12px',
               fontSize: '12px', color: '#374151',
-              fontFamily: "'DM Mono', monospace",
+              fontVariantNumeric: 'tabular-nums',
             }}>
               {currentStep}/{steps.length} stappen voltooid
             </p>
@@ -343,7 +329,10 @@ function StepRow({ step, index }: { step: Step; index: number }) {
             borderRadius: '50%',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
-            <span style={{ color: '#ef4444', fontSize: '14px' }}>✕</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
           </div>
         )}
       </div>
@@ -353,12 +342,11 @@ function StepRow({ step, index }: { step: Step; index: number }) {
         <p style={{
           margin: '0 0 2px',
           fontSize: '14px',
-          fontWeight: step.status === 'active' ? 500 : 400,
+          fontWeight: step.status === 'active' ? 600 : 400,
           color: step.status === 'active' ? '#f0fdf4'
             : step.status === 'done' ? '#86efac'
             : step.status === 'error' ? '#fca5a5'
             : '#4b5563',
-          fontFamily: "'DM Sans', sans-serif",
           transition: 'color 0.3s ease',
         }}>
           {step.status === 'active' ? (
@@ -369,7 +357,6 @@ function StepRow({ step, index }: { step: Step; index: number }) {
           margin: 0,
           fontSize: '12px',
           color: step.status === 'active' ? '#4ade80' : '#374151',
-          fontFamily: "'DM Sans', sans-serif",
           transition: 'color 0.3s ease',
         }}>
           {step.sublabel}

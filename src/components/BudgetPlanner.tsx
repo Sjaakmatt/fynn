@@ -55,9 +55,7 @@ export default function BudgetPlanner() {
     }
   }, [])
 
-  useEffect(() => {
-    loadBudget()
-  }, [loadBudget])
+  useEffect(() => { loadBudget() }, [loadBudget])
 
   useEffect(() => {
     const handler = () => loadBudget()
@@ -71,10 +69,7 @@ export default function BudgetPlanner() {
     try {
       const res = await fetch('/api/budget', { method: 'POST' })
       const data = await res.json()
-      if (!res.ok) {
-        setError(data.error ?? 'Kon budget niet genereren')
-        return
-      }
+      if (!res.ok) { setError(data.error ?? 'Kon budget niet genereren'); return }
       if (data.categories) {
         setBudget({ categories: data.categories, updated_at: new Date().toISOString() })
         const inkomen = Number(data.totalInkomen ?? 0)
@@ -148,13 +143,14 @@ export default function BudgetPlanner() {
 
   const totalBudget = budget?.categories.reduce((sum, c) => sum + c.budget, 0) ?? 0
   const totalUitgegeven = Object.values(uitgaven).reduce((sum, v) => sum + v, 0)
-  const resterendBudget = totalBudget - totalUitgegeven
-  const resterendInkomen = totalInkomen - totalBudget
+  const resterend = totalBudget - totalUitgegeven
 
   const today = new Date()
   const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
   const dayProgress = today.getDate() / daysInMonth
+  const monthLabel = today.toLocaleDateString('nl-NL', { month: 'long' })
 
+  // ─── Loading ────────────────────────────────────────────────────────
   if (loading) return (
     <div className="rounded-2xl p-8 flex items-center justify-center"
       style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
@@ -162,240 +158,220 @@ export default function BudgetPlanner() {
     </div>
   )
 
+  // ─── Empty state ────────────────────────────────────────────────────
   if (!budget) return (
-    <div className="rounded-2xl p-10 text-center"
+    <div className="rounded-2xl p-8 text-center"
       style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
-      <p className="text-4xl mb-4">📊</p>
-      <h3 className="font-semibold mb-2" style={{ color: 'var(--text)' }}>
+      <div
+        className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4"
+        style={{ backgroundColor: 'var(--tab-bg)' }}
+      >
+        <span className="text-xl">📊</span>
+      </div>
+      <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text)' }}>
         Nog geen budget
-      </h3>
-      <p className="text-sm mb-2" style={{ color: 'var(--muted)' }}>
-        Fynn analyseert je transactiehistorie en maakt een persoonlijk budget.
       </p>
-      <p className="text-xs mb-6 px-6" style={{ color: 'var(--muted)' }}>
-        Gebaseerd op je mediaan uitgaven per categorie, je inkomen, en een spaarquote van minimaal 10%.
+      <p className="text-xs mb-6" style={{ color: 'var(--muted)' }}>
+        Fynn maakt een budget op basis van je transactiehistorie, inkomen en een spaarquote van minimaal 10%.
       </p>
       {error && (
-        <div className="mb-4 rounded-xl p-3 text-xs text-left"
-          style={{ backgroundColor: 'rgba(239,68,68,0.08)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>
+        <p className="text-xs rounded-xl p-3 mb-4 text-left"
+          style={{ backgroundColor: 'rgba(239,68,68,0.08)', color: '#EF4444' }}>
           {error}
-        </div>
+        </p>
       )}
       <button
         onClick={generateBudget}
         disabled={generating}
-        className="px-6 py-3 rounded-xl text-sm font-medium text-white disabled:opacity-50"
+        className="w-full py-3.5 rounded-xl text-sm font-semibold text-white disabled:opacity-30 transition-opacity"
         style={{ backgroundColor: 'var(--brand)' }}
       >
-        {generating ? '✨ Budget genereren...' : '✨ Genereer mijn budget'}
+        {generating ? 'Genereren...' : 'Genereer mijn budget'}
       </button>
     </div>
   )
 
+  // ─── Budget view ────────────────────────────────────────────────────
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
 
-      {/* Error banner */}
+      {/* Error */}
       {error && (
-        <div className="rounded-2xl p-4 text-sm flex items-center justify-between"
-          style={{ backgroundColor: 'rgba(239,68,68,0.08)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>
-          <span>{error}</span>
-          <button onClick={() => setError(null)} className="ml-2 font-bold">×</button>
+        <div className="flex items-center justify-between rounded-xl p-3"
+          style={{ backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+          <p className="text-xs" style={{ color: '#EF4444' }}>{error}</p>
+          <button onClick={() => setError(null)} className="text-sm leading-none ml-3" style={{ color: '#EF4444' }}>×</button>
         </div>
       )}
 
-      {/* Overzicht header */}
-      <div className="rounded-2xl p-5"
-        style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <h3 className="font-semibold text-sm" style={{ color: 'var(--text)' }}>
-              Maandbudget {today.toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' })}
-            </h3>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
-              Gebaseerd op je transactiehistorie · Klik op een bedrag om aan te passen
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {saving && <p className="text-xs" style={{ color: 'var(--muted)' }}>Opslaan...</p>}
-            <button
-              onClick={generateBudget}
-              disabled={generating}
-              className="text-xs px-3 py-1.5 rounded-lg text-white disabled:opacity-50"
-              style={{ backgroundColor: 'var(--brand)' }}
-            >
-              {generating ? '...' : '↻ Hergenereer'}
-            </button>
-          </div>
-        </div>
-
-        {/* Stats grid */}
-        <div className="grid grid-cols-3 gap-2">
-          <div className="rounded-xl p-3" style={{ backgroundColor: 'var(--tab-bg)' }}>
-            <p className="text-xs mb-1" style={{ color: 'var(--muted)' }}>Inkomen</p>
-            <p className="text-lg font-bold" style={{ color: 'var(--text)' }}>
-              €{totalInkomen.toFixed(0)}
-            </p>
-          </div>
-          <div className="rounded-xl p-3" style={{ backgroundColor: 'var(--tab-bg)' }}>
-            <p className="text-xs mb-1" style={{ color: 'var(--muted)' }}>Ingepland</p>
-            <p className="text-lg font-bold" style={{
-              color: totalBudget > totalInkomen ? '#EF4444' : 'var(--text)'
-            }}>
-              €{totalBudget.toFixed(0)}
-            </p>
-          </div>
-          <div className="rounded-xl p-3" style={{ backgroundColor: 'var(--tab-bg)' }}>
-            <p className="text-xs mb-1" style={{ color: 'var(--muted)' }}>
-              {resterendInkomen >= 0 ? 'Niet ingepland' : 'Over budget'}
-            </p>
-            <p className="text-lg font-bold" style={{
-              color: resterendInkomen < 0 ? '#EF4444' : resterendInkomen < 100 ? '#F59E0B' : '#4ade80'
-            }}>
-              €{Math.abs(resterendInkomen).toFixed(0)}
-            </p>
-          </div>
-        </div>
-
-        {/* Waarschuwing als budget hoger dan inkomen */}
-        {totalBudget > totalInkomen && (
-          <div className="mt-3 rounded-xl p-3 text-xs"
-            style={{ backgroundColor: 'rgba(239,68,68,0.08)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>
-            ⚠️ Je budget (€{totalBudget.toFixed(0)}) is hoger dan je inkomen (€{totalInkomen.toFixed(0)}). Pas de bedragen aan.
-          </div>
-        )}
-      </div>
-
-      {/* Maand voortgang */}
+      {/* Eén card: header → summary → categorieën → footer */}
       <div className="rounded-2xl overflow-hidden"
         style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div className="px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold text-sm" style={{ color: 'var(--text)' }}>
-                Voortgang deze maand
-              </h3>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
-                €{totalUitgegeven.toFixed(0)} uitgegeven van €{totalBudget.toFixed(0)} · dag {today.getDate()} van {daysInMonth}
-              </p>
-            </div>
-            <p className="text-sm font-semibold" style={{
-              color: resterendBudget < 0 ? '#EF4444' : resterendBudget < 200 ? '#F59E0B' : '#4ade80'
-            }}>
-              {resterendBudget >= 0 ? `€${resterendBudget.toFixed(0)} over` : `€${Math.abs(resterendBudget).toFixed(0)} te veel`}
+
+        {/* ── Header ── */}
+        <div className="px-5 py-4 flex items-center justify-between border-b" style={{ borderColor: 'var(--border)' }}>
+          <div>
+            <p className="text-sm font-semibold capitalize" style={{ color: 'var(--text)' }}>
+              Budget {monthLabel}
+            </p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+              {saving ? 'Opslaan...' : `Dag ${today.getDate()} van ${daysInMonth}`}
             </p>
           </div>
+          <button
+            onClick={generateBudget}
+            disabled={generating}
+            className="px-3 py-1.5 rounded-xl text-xs font-medium disabled:opacity-30 transition-opacity"
+            style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--muted)' }}
+          >
+            {generating ? '...' : '↻ Opnieuw'}
+          </button>
         </div>
 
-        {/* Categorieën */}
-        <div>
-          {budget.categories.map((cat, i) => {
-            const spent = uitgaven[cat.category] ?? 0
-            const pct = cat.budget > 0 ? Math.min((spent / cat.budget) * 100, 100) : 0
-            const overBudget = spent > cat.budget
-            const almostOver = !overBudget && pct > 80
-            const paceWarning = !overBudget && !almostOver && pct > (dayProgress * 100 + 15)
-            const isEditing = editingId === cat.category
+        {/* ── Summary strip ── */}
+        <div className="px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+          <div className="flex items-baseline justify-between mb-3">
+            <div className="flex items-baseline gap-1">
+              <span className="text-lg font-bold tabular-nums" style={{ color: 'var(--text)' }}>
+                €{totalUitgegeven.toFixed(0)}
+              </span>
+              <span className="text-sm tabular-nums" style={{ color: 'var(--muted)' }}>
+                / €{totalBudget.toFixed(0)}
+              </span>
+            </div>
+            <span className="text-sm font-semibold" style={{
+              color: resterend < 0 ? '#EF4444' : resterend < 200 ? '#F59E0B' : '#4ade80'
+            }}>
+              {resterend >= 0 ? `€${resterend.toFixed(0)} over` : `€${Math.abs(resterend).toFixed(0)} over budget`}
+            </span>
+          </div>
 
-            return (
-              <div key={cat.category} className="px-5 py-4 group"
-                style={{ borderBottom: i < budget.categories.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <span className="text-lg shrink-0">{cat.icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium capitalize truncate" style={{ color: 'var(--text)' }}>
-                        {cat.category}
-                      </p>
-                      {overBudget && (
-                        <p className="text-xs font-medium" style={{ color: '#EF4444' }}>
-                          ⚠️ €{(spent - cat.budget).toFixed(0)} over budget
-                        </p>
-                      )}
-                      {almostOver && (
-                        <p className="text-xs" style={{ color: '#F59E0B' }}>
-                          Bijna op — nog €{(cat.budget - spent).toFixed(0)}
-                        </p>
-                      )}
-                      {paceWarning && (
-                        <p className="text-xs" style={{ color: '#F59E0B' }}>
-                          Hoger tempo dan gemiddeld
-                        </p>
-                      )}
-                      {cat.tip && !overBudget && !almostOver && !paceWarning && (
-                        <p className="text-xs truncate" style={{ color: 'var(--muted)' }}>
-                          {cat.tip}
-                        </p>
-                      )}
-                    </div>
-                  </div>
+          {/* Total progress bar */}
+          <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--tab-bg)' }}>
+            <div
+              className="h-full rounded-full transition-all duration-700"
+              style={{
+                width: `${Math.min((totalUitgegeven / totalBudget) * 100, 100)}%`,
+                backgroundColor: resterend < 0 ? '#EF4444' : resterend < 200 ? '#F59E0B' : 'var(--brand)',
+              }}
+            />
+          </div>
 
-                  <div className="flex items-center gap-2 shrink-0 ml-2">
-                    <div className="text-right">
-                      <span className="text-xs" style={{ color: 'var(--muted)' }}>
-                        €{spent.toFixed(0)} /&nbsp;
-                      </span>
-                      {isEditing ? (
-                        <input
-                          type="number"
-                          defaultValue={cat.budget}
-                          autoFocus
-                          min={0}
-                          onBlur={e => updateBudgetAmount(cat.category, Number(e.target.value))}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') updateBudgetAmount(cat.category, Number((e.target as HTMLInputElement).value))
-                            if (e.key === 'Escape') setEditingId(null)
-                          }}
-                          className="w-20 text-right text-sm font-semibold rounded-lg px-2 py-1 outline-none"
-                          style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--text)', border: '1px solid var(--brand)' }}
-                        />
-                      ) : (
-                        <button
-                          onClick={() => setEditingId(cat.category)}
-                          className="text-sm font-semibold hover:underline underline-offset-2"
-                          style={{ color: 'var(--text)' }}
-                          title="Klik om aan te passen"
-                        >
-                          €{cat.budget.toFixed(0)}
-                        </button>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => removeCategory(cat.category)}
-                      className="opacity-40 sm:opacity-0 sm:group-hover:opacity-100 text-xs w-5 h-5 rounded-full flex items-center justify-center transition-opacity"
-                      style={{ color: '#EF4444', backgroundColor: 'rgba(239,68,68,0.1)' }}
-                      title="Verwijder categorie"
-                    >
-                      ×
-                    </button>
-                  </div>
+          {/* Tempo indicator — alleen als relevant */}
+          {resterend >= 0 && (totalUitgegeven / totalBudget) > dayProgress + 0.1 && (
+            <p className="text-xs mt-2" style={{ color: '#F59E0B' }}>
+              Je zit iets voor op tempo — houd het in de gaten
+            </p>
+          )}
+
+          {/* Budget > inkomen */}
+          {totalBudget > totalInkomen && (
+            <p className="text-xs mt-2" style={{ color: '#EF4444' }}>
+              Budget (€{totalBudget.toFixed(0)}) is hoger dan inkomen (€{totalInkomen.toFixed(0)})
+            </p>
+          )}
+        </div>
+
+        {/* ── Categorie rijen ── */}
+        {budget.categories.map((cat, i) => {
+          const spent = uitgaven[cat.category] ?? 0
+          const pct = cat.budget > 0 ? Math.min((spent / cat.budget) * 100, 100) : 0
+          const overBudget = spent > cat.budget
+          const almostOver = !overBudget && pct > 80
+          const isEditing = editingId === cat.category
+          const barColor = overBudget ? '#EF4444' : almostOver ? '#F59E0B' : '#4ade80'
+
+          return (
+            <div key={cat.category} className="px-5 py-3.5 group"
+              style={{ borderBottom: i < budget.categories.length - 1 ? '1px solid var(--border)' : 'none' }}>
+
+              {/* Row: icon + name + amounts */}
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <span className="text-base shrink-0">{cat.icon}</span>
+                  <p className="text-sm capitalize truncate" style={{ color: 'var(--text)' }}>
+                    {cat.category}
+                  </p>
                 </div>
 
-                <div className="h-1.5 rounded-full overflow-hidden ml-7"
-                  style={{ backgroundColor: 'var(--tab-bg)' }}>
-                  <div
-                    className="h-full rounded-full transition-all duration-700"
-                    style={{
-                      width: `${pct}%`,
-                      backgroundColor: overBudget ? '#EF4444' : almostOver ? '#F59E0B' : '#4ade80',
-                    }}
-                  />
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs tabular-nums" style={{ color: overBudget ? '#EF4444' : 'var(--muted)' }}>
+                    €{spent.toFixed(0)}
+                  </span>
+                  <span className="text-xs" style={{ color: 'var(--border)' }}>/</span>
+                  {isEditing ? (
+                    <input
+                      type="number"
+                      defaultValue={cat.budget}
+                      autoFocus
+                      min={0}
+                      onBlur={e => updateBudgetAmount(cat.category, Number(e.target.value))}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') updateBudgetAmount(cat.category, Number((e.target as HTMLInputElement).value))
+                        if (e.key === 'Escape') setEditingId(null)
+                      }}
+                      className="w-16 text-right text-xs font-medium rounded-lg px-2 py-1 outline-none tabular-nums"
+                      style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--text)', border: '1px solid var(--border)' }}
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setEditingId(cat.category)}
+                      className="text-xs font-medium tabular-nums"
+                      style={{ color: 'var(--text)' }}
+                      title="Klik om aan te passen"
+                    >
+                      €{cat.budget.toFixed(0)}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => removeCategory(cat.category)}
+                    className="w-5 h-5 rounded-full flex items-center justify-center
+                               opacity-0 group-hover:opacity-60 hover:!opacity-100
+                               sm:opacity-0 max-sm:opacity-40
+                               transition-opacity"
+                    style={{ color: 'var(--muted)' }}
+                    title="Verwijder"
+                  >
+                    <span className="text-xs leading-none">×</span>
+                  </button>
                 </div>
               </div>
-            )
-          })}
-        </div>
 
-        {/* Categorie toevoegen */}
-        <div className="px-5 py-4 border-t" style={{ borderColor: 'var(--border)' }}>
+              {/* Progress bar */}
+              <div className="h-1 rounded-full overflow-hidden ml-7"
+                style={{ backgroundColor: 'var(--tab-bg)' }}>
+                <div
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{ width: `${pct}%`, backgroundColor: barColor }}
+                />
+              </div>
+
+              {/* Status — alleen bij problemen */}
+              {overBudget && (
+                <p className="text-xs mt-1.5 ml-7" style={{ color: '#EF4444' }}>
+                  €{(spent - cat.budget).toFixed(0)} over budget
+                </p>
+              )}
+              {almostOver && (
+                <p className="text-xs mt-1.5 ml-7" style={{ color: '#F59E0B' }}>
+                  Nog €{(cat.budget - spent).toFixed(0)} over
+                </p>
+              )}
+            </div>
+          )
+        })}
+
+        {/* ── Categorie toevoegen ── */}
+        <div className="px-5 py-3.5 border-t" style={{ borderColor: 'var(--border)' }}>
           {showAddCategory ? (
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               <input
                 type="text"
                 value={newCategory}
                 onChange={e => setNewCategory(e.target.value)}
-                placeholder="Categorie (bijv. vakantie)"
-                className="flex-1 rounded-xl px-3 py-2 text-sm outline-none"
+                placeholder="Categorie"
+                autoFocus
+                className="flex-1 rounded-xl px-4 py-3 text-sm outline-none"
                 style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--text)', border: '1px solid var(--border)' }}
                 onKeyDown={e => { if (e.key === 'Enter') document.getElementById('budget-new-amount')?.focus() }}
               />
@@ -408,34 +384,28 @@ export default function BudgetPlanner() {
                   onChange={e => setNewBudget(e.target.value)}
                   placeholder="0"
                   min={0}
-                  className="w-24 rounded-xl pl-6 pr-3 py-2 text-sm outline-none"
+                  className="w-20 rounded-xl pl-6 pr-3 py-3 text-sm outline-none"
                   style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--text)', border: '1px solid var(--border)' }}
                   onKeyDown={e => { if (e.key === 'Enter') addCategory() }}
                 />
               </div>
-              <button
-                onClick={addCategory}
-                className="px-3 py-2 rounded-xl text-sm text-white"
-                style={{ backgroundColor: 'var(--brand)' }}
-              >
+              <button onClick={addCategory}
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-semibold text-white shrink-0"
+                style={{ backgroundColor: 'var(--brand)' }}>
                 ✓
               </button>
-              <button
-                onClick={() => { setShowAddCategory(false); setNewCategory(''); setNewBudget('') }}
-                className="px-3 py-2 rounded-xl text-sm"
-                style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--muted)' }}
-              >
+              <button onClick={() => { setShowAddCategory(false); setNewCategory(''); setNewBudget('') }}
+                className="text-sm leading-none" style={{ color: 'var(--muted)' }}>
                 ✕
               </button>
             </div>
           ) : (
             <button
               onClick={() => setShowAddCategory(true)}
-              className="text-sm flex items-center gap-2 transition-opacity hover:opacity-70"
+              className="text-xs font-medium transition-opacity hover:opacity-70"
               style={{ color: 'var(--brand)' }}
             >
-              <span className="text-lg leading-none">+</span>
-              <span>Categorie toevoegen</span>
+              + Categorie toevoegen
             </button>
           )}
         </div>

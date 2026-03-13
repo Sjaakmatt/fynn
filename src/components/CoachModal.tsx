@@ -65,84 +65,68 @@ export default function CoachModal({ isPro }: Props) {
 
       {/* ── Modal overlay ── */}
       {open && (
-        <>
-          {/* Backdrop */}
+        <div
+          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
+          onClick={() => setOpen(false)}
+        >
           <div
-            className="fixed inset-0 z-[150]"
-            style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
-            onClick={() => setOpen(false)}
-          />
-
-          {/* Bottom sheet */}
-          <div
-            className="fixed z-[160] flex flex-col w-full sm:w-auto sm:max-w-lg sm:right-5 sm:bottom-5 sm:rounded-2xl sm:left-auto sm:top-auto"
-            style={{
-              bottom: 0,
-              left: 0,
-              right: 0,
-              maxHeight: '85vh',
-              backgroundColor: 'var(--surface)',
-              borderRadius: '20px 20px 0 0',
-              border: '1px solid var(--border)',
-              boxShadow: '0 -4px 40px rgba(0,0,0,0.15)',
-            }}
+            className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl flex flex-col"
+            style={{ backgroundColor: 'var(--bg)', maxHeight: '92vh' }}
+            onClick={e => e.stopPropagation()}
           >
-            {/* Handle (mobile only) */}
-            <div className="flex justify-center pt-3 pb-1 flex-shrink-0 sm:hidden">
+            {/* Handle — mobiel only */}
+            <div className="sm:hidden flex justify-center pt-3">
               <div className="w-10 h-1 rounded-full" style={{ backgroundColor: 'var(--border)' }} />
             </div>
 
             {/* Header */}
-            <div
-              className="flex items-center justify-between px-5 py-3 border-b flex-shrink-0"
-              style={{ borderColor: 'var(--border)' }}
-            >
-              <div
-                className="flex p-1 rounded-xl"
-                style={{ backgroundColor: 'var(--tab-bg)' }}
-              >
-                <button
-                  onClick={() => setView('coach')}
-                  className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all"
-                  style={{
-                    backgroundColor: view === 'coach' ? 'var(--tab-active)' : 'transparent',
-                    color: view === 'coach' ? 'var(--tab-active-text)' : 'var(--muted)',
-                  }}
-                >
-                  ✦ Coach
-                </button>
-                <button
-                  onClick={() => setView('check')}
-                  className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all"
-                  style={{
-                    backgroundColor: view === 'check' ? 'var(--tab-active)' : 'transparent',
-                    color: view === 'check' ? 'var(--tab-active-text)' : 'var(--muted)',
-                  }}
-                >
-                  ✓ Check
-                </button>
+            <div className="px-6 pt-5 pb-4 flex items-center justify-between">
+              {/* Toggle */}
+              <div className="flex p-0.5 rounded-lg" style={{ backgroundColor: 'var(--tab-bg)' }}>
+                {([
+                  { value: 'coach' as const, label: '✦ Coach' },
+                  { value: 'check' as const, label: '✓ Check' },
+                ]).map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setView(opt.value)}
+                    className="px-4 py-1.5 rounded-md text-sm font-medium transition-all"
+                    style={{
+                      backgroundColor: view === opt.value ? 'var(--tab-active)' : 'transparent',
+                      color: view === opt.value ? 'var(--tab-active-text)' : 'var(--muted)',
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
 
               <button
                 onClick={() => setOpen(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-full text-sm"
-                style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--muted)' }}
+                className="mt-1 text-lg leading-none"
+                style={{ color: 'var(--muted)' }}
               >
                 ✕
               </button>
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto px-5 py-4">
+            <div className="flex-1 overflow-y-auto px-6 pb-6">
               {isPro ? (
                 <>
                   {view === 'coach' && <ChatCoach embedded />}
                   {view === 'check' && <UitgaveCheck />}
                 </>
               ) : (
-                <div className="py-8 text-center">
-                  <p className="text-4xl mb-4">✦</p>
-                  <p className="text-base font-semibold mb-2" style={{ color: 'var(--text)' }}>
+                <div className="py-12 text-center">
+                  <div
+                    className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-5"
+                    style={{ backgroundColor: 'color-mix(in srgb, var(--brand) 12%, transparent)' }}
+                  >
+                    <span className="text-xl" style={{ color: 'var(--brand)' }}>✦</span>
+                  </div>
+                  <p className="text-base font-semibold mb-1" style={{ color: 'var(--text)' }}>
                     Fynn Coach is Pro
                   </p>
                   <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>
@@ -150,8 +134,8 @@ export default function CoachModal({ isPro }: Props) {
                   </p>
                   <button
                     onClick={() => { setOpen(false); router.push('/pricing') }}
-                    className="px-6 py-3 rounded-2xl text-sm font-semibold text-white"
-                    style={{ backgroundColor: 'var(--brand)' }}
+                    className="w-full py-3.5 rounded-xl text-sm font-semibold"
+                    style={{ backgroundColor: 'var(--brand)', color: 'white' }}
                   >
                     Upgrade naar Pro
                   </button>
@@ -159,14 +143,14 @@ export default function CoachModal({ isPro }: Props) {
               )}
             </div>
 
-            {/* Footer */}
+            {/* Footer — AFM disclaimer */}
             {isPro && (
-              <div className="px-5 pb-4 pt-1 flex-shrink-0">
+              <div className="px-6 pb-4 pt-1 flex-shrink-0 border-t" style={{ borderColor: 'var(--border)' }}>
                 <AFMDisclaimer />
               </div>
             )}
           </div>
-        </>
+        </div>
       )}
     </>,
     document.body
