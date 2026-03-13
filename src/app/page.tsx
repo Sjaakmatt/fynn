@@ -708,29 +708,6 @@ export default function LandingPage() {
           <FeatureRow reverse tag="Doelen behalen" title="Spaargoal Coach" icon={Icons.target}
             desc="Stel je doel in: 'Ik wil €3.000 voor Japan in december.' Fynn berekent wat je maandelijks moet sparen, koppelt je spaarrekening en stuurt alerts als je dreigt af te wijken."
             mockContent={<MockSpaargoal />} />
-          <FeatureRow tag="Zero handmatig werk" title="Automatische Categorisatie" icon={Icons.checkBrand}
-            desc="Elke transactie wordt automatisch gecategoriseerd: boodschappen, abonnementen, uit eten, transport, wonen. AI herkent 50+ Nederlandse merchants. Nul handmatig invoerwerk."
-            mockContent={
-              <div style={{ padding: '16px 12px' }}>
-                <p style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 8 }}>Recente transacties</p>
-                {[
-                  { name: 'Albert Heijn', cat: 'Boodschappen', amount: '−€47,82', color: 'var(--brand)' },
-                  { name: 'Shell', cat: 'Transport', amount: '−€65,00', color: '#F59E0B' },
-                  { name: 'Thuisbezorgd', cat: 'Uit eten', amount: '−€28,50', color: '#EF4444' },
-                  { name: 'Salaris', cat: 'Inkomen', amount: '+€3.200', color: '#4ade80' },
-                  { name: 'Netflix', cat: 'Abonnement', amount: '−€17,99', color: 'var(--muted)' },
-                ].map((tx, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: i < 4 ? '1px solid var(--border)' : 'none' }}>
-                    <div style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: 'var(--tab-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'var(--muted)' }}>{tx.name[0]}</div>
-                    <div style={{ flex: 1 }}>
-                      <p style={{ fontSize: 12, fontWeight: 600 }}>{tx.name}</p>
-                      <p style={{ fontSize: 10, color: tx.color }}>{tx.cat}</p>
-                    </div>
-                    <span style={{ fontSize: 12, fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: tx.amount.startsWith('+') ? '#4ade80' : 'var(--text)' }}>{tx.amount}</span>
-                  </div>
-                ))}
-              </div>
-            } />
         </div>
       </section>
 
