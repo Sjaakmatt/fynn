@@ -33,12 +33,12 @@ export async function POST(request: NextRequest) {
         .maybeSingle()
 
       if (existing) {
-        // Update bestaand account
-        await supabase
+        const { error: updErr } = await supabase
           .from('bank_accounts')
           .update({ balance: balanceNum, account_name: name, updated_at: new Date().toISOString() })
           .eq('id', existing.id)
 
+        if (updErr) throw updErr
         return NextResponse.json({ success: true, action: 'updated' })
       }
     }
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
       iban: iban ?? null,
       currency: 'EUR',
       provider: 'manual',
-      external_id: `manual_${user.id}_${Date.now()}`,
+      external_id: `manual_${crypto.randomUUID()}`,
       balance: balanceNum,
       account_type: 'SAVINGS',
     })

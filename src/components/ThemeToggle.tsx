@@ -29,7 +29,7 @@ export default function ThemeToggle() {
     <button
       onClick={toggle}
       className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
-      style={{ backgroundColor: dark ? '#2D2D2D' : '#F0EDE8' }}
+      style={{ backgroundColor: 'var(--tab-bg)' }}
       title={dark ? 'Licht' : 'Donker'}
     >
       <span className="text-sm">{dark ? '☀️' : '🌙'}</span>

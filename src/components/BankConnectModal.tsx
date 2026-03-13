@@ -1,6 +1,7 @@
+// src/components/BankConnectModal.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import PlaidLinkButton from '@/components/plaid/PlaidLinkButton'
 
 const BANKING_PROVIDER = process.env.NEXT_PUBLIC_BANKING_PROVIDER ?? 'plaid'
@@ -31,17 +32,30 @@ export default function BankConnectModal({ onClose }: Props) {
 
   const banks = NL_BE_BANKS.filter(b => b.country === filter)
 
+  // Escape handler
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
   function connectEB(bank: { name: string; country: string }) {
     setLoading(bank.name)
     window.location.href = `/api/enablebanking/connect?bank=${encodeURIComponent(bank.name)}&country=${bank.country}`
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
-      <div className="w-full max-w-sm rounded-2xl p-6"
-        style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
-
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl p-6"
+        style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
+      >
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <div>

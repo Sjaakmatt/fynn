@@ -1,3 +1,4 @@
+// src/app/api/sync/recurring/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -21,8 +22,10 @@ type Candidate = {
   cadence: "monthly" | "4w" | "quarterly" | "unknown";
   typical_amount: number;
   typical_day: number;
-  forced?: "user_recurring" | "user_not_recurring" | "user_variable";
+  forced?: "user_recurring";
 };
+
+const PAGE_SIZE = 1000;
 
 function num(x: string | number | null): number {
   const n = Number(x ?? 0);
@@ -52,7 +55,8 @@ function cadenceFromIntervals(intervals: number[]) {
   const m = median(intervals);
   const fitTo = (target: number, tol: number) => {
     const within =
-      intervals.filter((d) => Math.abs(d - target) <= tol).length / intervals.length;
+      intervals.filter((d) => Math.abs(d - target) <= tol).length /
+      intervals.length;
     const dist = Math.abs(m - target);
     const distScore = clamp01(1 - dist / (tol * 2));
     return clamp01(0.7 * within + 0.3 * distScore);
@@ -65,7 +69,8 @@ function cadenceFromIntervals(intervals: number[]) {
   const best = Math.max(monthly, fourW, quarterly);
   if (best === monthly) return { cadence: "monthly" as const, fit: monthly };
   if (best === fourW) return { cadence: "4w" as const, fit: fourW };
-  if (best === quarterly) return { cadence: "quarterly" as const, fit: quarterly };
+  if (best === quarterly)
+    return { cadence: "quarterly" as const, fit: quarterly };
   return { cadence: "unknown" as const, fit: best };
 }
 
@@ -90,48 +95,67 @@ export async function POST(_req: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const now = new Date();
   const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 12, 1))
     .toISOString()
     .slice(0, 10);
 
-  // 1) Load transactions (expenses only)
-  const { data, error } = await supabase
-    .from("transactions")
-    .select("merchant_key, merchant_name, amount, transaction_date")
-    .eq("user_id", user.id)
-    .lt("amount", 0)
-    .gte("transaction_date", from)
-    .not("merchant_key", "is", null)
-    .order("transaction_date", { ascending: true });
+  // ── 1) Load transactions (expenses only) — gepagineerd ──────
+  let allTxs: TxRow[] = [];
+  let offset = 0;
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  while (true) {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("merchant_key, merchant_name, amount, transaction_date")
+      .eq("user_id", user.id)
+      .lt("amount", 0)
+      .gte("transaction_date", from)
+      .not("merchant_key", "is", null)
+      .order("transaction_date", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
 
-  const txs = (data ?? []) as TxRow[];
-  if (txs.length === 0) {
-    return NextResponse.json({ success: true, candidates: [], updated: 0, deactivated: 0 });
+    if (error)
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    allTxs = allTxs.concat(data ?? []);
+    if (!data || data.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
   }
 
-  // 2) Load user overrides
+  if (allTxs.length === 0) {
+    return NextResponse.json({
+      success: true,
+      candidates: [],
+      updated: 0,
+      deactivated: 0,
+    });
+  }
+
+  // ── 2) Load user overrides ──────────────────────────────────
   const { data: ovr, error: ovrErr } = await supabase
     .from("merchant_user_overrides")
     .select("merchant_key, is_variable, recurring_hint")
     .eq("user_id", user.id);
 
-  if (ovrErr) return NextResponse.json({ error: ovrErr.message }, { status: 500 });
+  if (ovrErr)
+    return NextResponse.json({ error: ovrErr.message }, { status: 500 });
 
   const ovByKey = new Map<string, OverrideRow>();
   for (const r of (ovr ?? []) as OverrideRow[]) ovByKey.set(r.merchant_key, r);
 
-  // 3) Group by merchant_key
+  // ── 3) Group by merchant_key ────────────────────────────────
   const byKey = new Map<string, TxRow[]>();
-  for (const t of txs) {
+  for (const t of allTxs) {
     const k = t.merchant_key!;
     if (!byKey.has(k)) byKey.set(k, []);
     byKey.get(k)!.push(t);
   }
+
+  // Set van alle merchant_keys die deze user heeft
+  const userMerchantKeys = new Set(allTxs.map((t) => t.merchant_key!));
 
   const candidates: Candidate[] = [];
 
@@ -139,7 +163,6 @@ export async function POST(_req: NextRequest) {
     if (rows.length < 2) continue;
 
     const ov = ovByKey.get(k);
-
     if (ov?.is_variable === true) continue;
 
     const dates = rows
@@ -149,7 +172,9 @@ export async function POST(_req: NextRequest) {
     if (dates.length < 2) continue;
 
     const amountsAbs = rows.map((r) => Math.abs(num(r.amount)));
-    const days = dates.map((d) => Number(d.slice(8, 10))).filter((x) => x >= 1 && x <= 31);
+    const days = dates
+      .map((d) => Number(d.slice(8, 10)))
+      .filter((x) => x >= 1 && x <= 31);
 
     // User override: force recurring
     if (ov?.recurring_hint === true) {
@@ -180,8 +205,10 @@ export async function POST(_req: NextRequest) {
     const dayScore = dayStability(days);
     const occScore = clamp01((rows.length - 2) / 6);
 
-    const score = clamp01(0.45 * fit + 0.30 * amtScore + 0.15 * dayScore + 0.10 * occScore);
-    if (score < 0.70) continue;
+    const score = clamp01(
+      0.45 * fit + 0.3 * amtScore + 0.15 * dayScore + 0.1 * occScore
+    );
+    if (score < 0.7) continue;
 
     candidates.push({
       merchant_key: k,
@@ -193,15 +220,16 @@ export async function POST(_req: NextRequest) {
     });
   }
 
-  // 4) Writeback to merchant_map (recurring_hint=true for candidates)
+  // ── 4) Writeback to merchant_map ────────────────────────────
   let updated = 0;
   if (candidates.length > 0) {
     const upserts = candidates.map((c) => ({
       merchant_key: c.merchant_key,
       merchant_name: c.merchant_name,
       recurring_hint: true,
-      confidence: Math.max(0.2, Math.min(0.95, c.score)),
-      source: c.forced === "user_recurring" ? "user_override" : "recurring_detector",
+      confidence: Math.min(0.95, c.score),
+      source:
+        c.forced === "user_recurring" ? "user_override" : "recurring_detector",
       updated_at: new Date().toISOString(),
     }));
 
@@ -209,46 +237,47 @@ export async function POST(_req: NextRequest) {
       .from("merchant_map")
       .upsert(upserts, { onConflict: "merchant_key" });
 
-    if (mmErr) return NextResponse.json({ error: mmErr.message }, { status: 500 });
+    if (mmErr)
+      return NextResponse.json({ error: mmErr.message }, { status: 500 });
     updated = upserts.length;
   }
 
-  // 5) Deactiveer merchants die >60 dagen niet meer gezien zijn (batch versie)
-  const activeKeys = new Set(candidates.map(c => c.merchant_key))
+  // ── 5) Deactiveer stale recurring — USER-SCOPED ─────────────
+  const activeKeys = new Set(candidates.map((c) => c.merchant_key));
 
   const { data: currentRecurring } = await supabase
     .from("merchant_map")
     .select("merchant_key")
-    .eq("recurring_hint", true)
+    .eq("recurring_hint", true);
 
+  // Alleen merchants die deze user kent EN die niet meer als candidate terugkomen
   const inactiveKeys = (currentRecurring ?? [])
-    .map(r => r.merchant_key)
-    .filter(k => !activeKeys.has(k))
+    .map((r) => r.merchant_key as string)
+    .filter((k) => !activeKeys.has(k) && userMerchantKeys.has(k));
 
-  const toDeactivate: string[] = []
+  const toDeactivate: string[] = [];
 
   if (inactiveKeys.length > 0) {
-    // Batch: haal last_seen per merchant op in één query
+    // Batch: haal last_seen per merchant in één query
     const { data: lastSeenRows } = await supabase
       .from("transactions")
       .select("merchant_key, transaction_date")
       .eq("user_id", user.id)
       .in("merchant_key", inactiveKeys)
-      .order("transaction_date", { ascending: false })
+      .order("transaction_date", { ascending: false });
 
-    // Pak per merchant_key de meest recente datum
-    const lastSeenByKey = new Map<string, string>()
-    for (const row of (lastSeenRows ?? [])) {
+    const lastSeenByKey = new Map<string, string>();
+    for (const row of lastSeenRows ?? []) {
       if (!lastSeenByKey.has(row.merchant_key)) {
-        lastSeenByKey.set(row.merchant_key, row.transaction_date)
+        lastSeenByKey.set(row.merchant_key, row.transaction_date);
       }
     }
 
-    const cutoff = now.toISOString().slice(0, 10)
+    const cutoff = now.toISOString().slice(0, 10);
     for (const k of inactiveKeys) {
-      const last = lastSeenByKey.get(k)
+      const last = lastSeenByKey.get(k);
       if (!last || daysBetween(last, cutoff) > 60) {
-        toDeactivate.push(k)
+        toDeactivate.push(k);
       }
     }
   }
@@ -256,10 +285,16 @@ export async function POST(_req: NextRequest) {
   if (toDeactivate.length > 0) {
     await supabase
       .from("merchant_map")
-      .update({ recurring_hint: false, updated_at: new Date().toISOString() })
-      .in("merchant_key", toDeactivate)
+      .update({
+        recurring_hint: false,
+        updated_at: new Date().toISOString(),
+      })
+      .in("merchant_key", toDeactivate);
 
-    console.log(`[Recurring] Gedeactiveerd (>60d niet gezien):`, toDeactivate)
+    console.log(
+      `[Recurring] Gedeactiveerd (>60d niet gezien):`,
+      toDeactivate
+    );
   }
 
   candidates.sort((a, b) => b.score - a.score);

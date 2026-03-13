@@ -21,7 +21,7 @@ export function useTab() {
 const TABS: { id: Tab; label: string; icon: string; proOnly: boolean }[] = [
   { id: 'overzicht', label: 'Overzicht', icon: '◎', proOnly: false },
   { id: 'analyse',   label: 'Analyse',   icon: '↗', proOnly: false },
-  { id: 'kalender',  label: 'Kalender',  icon: '▦', proOnly: false },
+  { id: 'kalender',  label: 'Kalender',  icon: '▦', proOnly: true  },
   { id: 'sparen',    label: 'Sparen',    icon: '◉', proOnly: true  },
   { id: 'budget',    label: 'Budget',    icon: '◈', proOnly: true  },
 ]

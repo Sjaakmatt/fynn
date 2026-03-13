@@ -52,7 +52,8 @@ export async function GET() {
 
     for (const tx of savingsTransactions) {
       const desc = tx.description ?? ''
-      const amount = Math.abs(parseFloat(tx.amount))
+      const amount = Math.abs(Number(tx.amount ?? 0));
+      if (!Number.isFinite(amount) || amount <= 0) continue;
 
       // Probeer IBAN te extraheren uit beschrijving
       const ibanMatch = desc.match(/\b(NL\d{2}[A-Z]{4}\d{10})\b/i)

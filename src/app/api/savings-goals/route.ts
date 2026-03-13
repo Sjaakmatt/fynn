@@ -112,7 +112,8 @@ export async function POST(req: NextRequest) {
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       return NextResponse.json({ error: 'Naam is verplicht' }, { status: 400 })
     }
-    if (!target_amount || isNaN(Number(target_amount)) || Number(target_amount) <= 0) {
+    const amt = Number(target_amount);
+    if (!Number.isFinite(amt) || amt <= 0) {
       return NextResponse.json({ error: 'Doelbedrag moet groter dan 0 zijn' }, { status: 400 })
     }
     if (!deadline || isNaN(Date.parse(deadline))) {
@@ -138,7 +139,7 @@ export async function POST(req: NextRequest) {
       .insert({
         user_id: user.id,
         name: name.trim(),
-        target_amount: Number(target_amount),
+        target_amount: amt,
         deadline,
         account_ids: safeAccountIds,
         notes: notes ?? null,

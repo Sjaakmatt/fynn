@@ -27,19 +27,32 @@ export async function GET(_req: NextRequest) {
   // 2) fetch last seen + typical amount from transactions for THIS user
   const keys = merchants.map((m) => m.merchant_key);
 
-  const { data: txs, error: txErr } = await supabase
+  // Na regel met `const keys = merchants.map(...)`
+// Voeg datumfilter + batching toe:
+
+const cutoff = new Date();
+cutoff.setMonth(cutoff.getMonth() - 12);
+const fromDate = cutoff.toISOString().slice(0, 10);
+
+let allTxs: any[] = [];
+for (let i = 0; i < keys.length; i += 500) {
+  const batch = keys.slice(i, i + 500);
+  const { data, error } = await supabase
     .from("transactions")
     .select("merchant_key, amount, transaction_date, category")
     .eq("user_id", user.id)
-    .in("merchant_key", keys)
+    .in("merchant_key", batch)
     .lt("amount", 0)
+    .gte("transaction_date", fromDate)
     .order("transaction_date", { ascending: false });
 
-  if (txErr) return NextResponse.json({ error: txErr.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  allTxs = allTxs.concat(data ?? []);
+}                       
 
   // build stats per merchant
   const byKey = new Map<string, { lastSeen: string; amounts: number[]; category: string | null }>();
-  for (const t of txs ?? []) {
+  for (const t of allTxs ?? []) {
     const k = (t as any).merchant_key as string | null;
     const d = (t as any).transaction_date as string | null;
     const a = Number((t as any).amount ?? 0);

@@ -1,3 +1,4 @@
+// src/app/api/calendar/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { extractMerchant } from "@/lib/clean-description";
@@ -5,7 +6,7 @@ import { extractMerchant } from "@/lib/clean-description";
 type TxRow = {
   description: string | null;
   amount: string | number | null;
-  transaction_date: string | null; // YYYY-MM-DD
+  transaction_date: string | null;
   merchant_key?: string | null;
   merchant_name?: string | null;
 };
@@ -19,8 +20,6 @@ type CalendarItem = {
   daysUntil: number;
   isPast: boolean;
   warning: boolean;
-
-  // handig voor UI/overrides
   merchantKey: string;
   score: number;
 };
@@ -43,6 +42,9 @@ type OverrideRow = {
   recurring_hint: boolean | null;
 };
 
+const PAGE_SIZE = 1000;
+const IN_BATCH = 500;
+
 function clampDayUTC(year: number, month0: number, day: number) {
   const daysInMonth = new Date(Date.UTC(year, month0 + 1, 0)).getUTCDate();
   return Math.min(Math.max(day, 1), daysInMonth);
@@ -51,7 +53,8 @@ function clampDayUTC(year: number, month0: number, day: number) {
 function median(nums: number[]) {
   if (nums.length === 0) return 0;
   const a = [...nums].sort((x, y) => x - y);
-  return a[Math.floor(a.length / 2)];
+  const mid = Math.floor(a.length / 2);
+  return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
 }
 
 function stddev(nums: number[]) {
@@ -62,7 +65,6 @@ function stddev(nums: number[]) {
 }
 
 function recurringScore(occ: Occurrence[], quarterly: boolean) {
-  // Group by month totals
   const byMonth: Record<string, number> = {};
   const days: number[] = [];
 
@@ -77,86 +79,160 @@ function recurringScore(occ: Occurrence[], quarterly: boolean) {
   const mMed = median(monthTotals);
   const mStd = stddev(monthTotals);
   const amountCV = mMed > 0 ? mStd / mMed : 999;
-
   const dayStd = stddev(days);
 
-  // Scoring (0..1)
-  // months: 3 maanden is basis voor monthly; quarterly mag 2 kwartalen (≈ 2-3 maanden actief) ook al ok zijn
   const monthsTarget = quarterly ? 4 : 6;
   const sMonths = Math.min(1, monthsActive / monthsTarget);
+  const sDay = quarterly
+    ? Math.min(1, 1 - dayStd / 10)
+    : Math.min(1, 1 - dayStd / 6);
+  const sAmt = Math.min(1, 1 - amountCV);
 
-  const sDay = quarterly ? Math.min(1, 1 - (dayStd / 10)) : Math.min(1, 1 - (dayStd / 6));
-  const sAmt = Math.min(1, 1 - amountCV); // cv <1 => positief
+  const score = Math.max(0, Math.min(1, 0.45 * sMonths + 0.35 * sDay + 0.2 * sAmt));
 
-  // gewicht
-  let score = 0.45 * sMonths + 0.35 * sDay + 0.20 * sAmt;
-
-  // clamp
-  score = Math.max(0, Math.min(1, score));
-
-  return {
-    score,
-    byMonth,
-    monthsActive,
-    medianMonthly: mMed,
-  };
+  return { score, byMonth, monthsActive, medianMonthly: mMed };
 }
 
-export async function GET(request: NextRequest) {
+/** Batched .in() query helper */
+async function batchedIn<T>(
+  supabase: any,
+  table: string,
+  column: string,
+  keys: string[],
+  select: string,
+  extraFilters?: (q: any) => any
+): Promise<T[]> {
+  const all: T[] = [];
+  for (let i = 0; i < keys.length; i += IN_BATCH) {
+    const batch = keys.slice(i, i + IN_BATCH);
+    let q = supabase.from(table).select(select).in(column, batch);
+    if (extraFilters) q = extraFilters(q);
+    const { data } = await q;
+    all.push(...((data ?? []) as T[]));
+  }
+  return all;
+}
+
+export async function GET(_request: NextRequest) {
   try {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    // NL “today midnight”
-    const nlDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Amsterdam" }).format(new Date());
+    // ── Subscription check ────────────────────────────────────
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("subscription_status, trial_ends_at")
+      .eq("id", user.id)
+      .single();
+
+    const subStatus = profile?.subscription_status;
+    const isPro =
+      subStatus === "active" ||
+      (subStatus === "trialing" &&
+        profile?.trial_ends_at &&
+        new Date(profile.trial_ends_at) > new Date());
+
+    if (!isPro) {
+      return NextResponse.json(
+        { error: "Upgrade naar Pro voor de vaste lasten kalender" },
+        { status: 403 }
+      );
+    }
+
+    // NL "today midnight"
+    const nlDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Amsterdam",
+    }).format(new Date());
     const [todayYear, todayMonth1, todayDay] = nlDate.split("-").map(Number);
     const todayMonth0 = todayMonth1 - 1;
     const todayMidnight = new Date(Date.UTC(todayYear, todayMonth0, todayDay));
 
-    // Detect window: 12m is ok voor recurring candidates; later kan dit 24m worden
-    const twelveMonthsAgo = new Date(Date.UTC(todayYear, todayMonth0 - 12, 1)).toISOString().split("T")[0];
+    const twelveMonthsAgo = new Date(
+      Date.UTC(todayYear, todayMonth0 - 12, 1)
+    )
+      .toISOString()
+      .split("T")[0];
 
-    const { data } = await supabase
-      .from("transactions")
-      .select("description, amount, transaction_date, merchant_key, merchant_name")
-      .eq("user_id", user.id)
-      .lt("amount", 0)
-      .gte("transaction_date", twelveMonthsAgo)
-      .order("transaction_date", { ascending: false });
+    // ── Fetch transacties — gepagineerd ───────────────────────
+    let allTxs: TxRow[] = [];
+    let offset = 0;
 
-    const txs = (data ?? []) as TxRow[];
-    if (txs.length === 0) {
-      return NextResponse.json({ items: [], totalBalance: 0, upcomingTotal: 0, balanceWarning: false });
+    while (true) {
+      const { data, error } = await supabase
+        .from("transactions")
+        .select(
+          "description, amount, transaction_date, merchant_key, merchant_name"
+        )
+        .eq("user_id", user.id)
+        .lt("amount", 0)
+        .gte("transaction_date", twelveMonthsAgo)
+        .order("transaction_date", { ascending: false })
+        .range(offset, offset + PAGE_SIZE - 1);
+
+      if (error) throw error;
+      allTxs = allTxs.concat(data ?? []);
+      if (!data || data.length < PAGE_SIZE) break;
+      offset += PAGE_SIZE;
     }
 
-    // Latest date = based on actual data
-    const dates = txs
-      .map(t => t.transaction_date)
+    if (allTxs.length === 0) {
+      return NextResponse.json({
+        items: [],
+        totalBalance: 0,
+        upcomingTotal: 0,
+        balanceWarning: false,
+      });
+    }
+
+    // Latest date from data
+    const dates = allTxs
+      .map((t) => t.transaction_date)
       .filter((d): d is string => typeof d === "string" && d.length >= 10)
       .sort()
       .reverse();
 
     const latestDate = dates[0];
     if (!latestDate) {
-      return NextResponse.json({ items: [], totalBalance: 0, upcomingTotal: 0, balanceWarning: false });
+      return NextResponse.json({
+        items: [],
+        totalBalance: 0,
+        upcomingTotal: 0,
+        balanceWarning: false,
+      });
     }
 
     const latestYear = Number(latestDate.slice(0, 4));
     const latestMonth1 = Number(latestDate.slice(5, 7));
     const latestMonth0 = latestMonth1 - 1;
 
-    const refMonthStart = new Date(Date.UTC(latestYear, latestMonth0 - 1, 1)).toISOString().split("T")[0];
-    const refMonthEnd = new Date(Date.UTC(latestYear, latestMonth0, 0)).toISOString().split("T")[0];
-    const refMonthCurrent = new Date(Date.UTC(latestYear, latestMonth0, 1)).toISOString().split("T")[0];
-    const threeMonthsBeforeLatest = new Date(Date.UTC(latestYear, latestMonth0 - 3, 1)).toISOString().split("T")[0];
+    const refMonthStart = new Date(Date.UTC(latestYear, latestMonth0 - 1, 1))
+      .toISOString()
+      .split("T")[0];
+    const refMonthEnd = new Date(Date.UTC(latestYear, latestMonth0, 0))
+      .toISOString()
+      .split("T")[0];
+    const refMonthCurrent = new Date(Date.UTC(latestYear, latestMonth0, 1))
+      .toISOString()
+      .split("T")[0];
+    const threeMonthsBeforeLatest = new Date(
+      Date.UTC(latestYear, latestMonth0 - 3, 1)
+    )
+      .toISOString()
+      .split("T")[0];
     const refMonthKey = `${latestYear}-${String(latestMonth1).padStart(2, "0")}`;
 
-    // Group by merchant_key (compute on the fly if missing)
-    const groups = new Map<string, { name: string; occurrences: Occurrence[]; quarterlyHint: boolean }>();
+    // ── Group by merchant_key ─────────────────────────────────
+    const groups = new Map<
+      string,
+      { name: string; occurrences: Occurrence[]; quarterlyHint: boolean }
+    >();
     const merchantKeys: string[] = [];
 
-    for (const tx of txs) {
+    for (const tx of allTxs) {
       const rawDate = tx.transaction_date ?? "";
       if (!rawDate || rawDate.length < 10) continue;
 
@@ -164,18 +240,24 @@ export async function GET(request: NextRequest) {
       if (!Number.isFinite(amountAbs) || amountAbs <= 0) continue;
 
       const { merchantName, merchantKey } = tx.merchant_key
-        ? { merchantName: tx.merchant_name ?? "Onbekend", merchantKey: tx.merchant_key }
+        ? {
+            merchantName: tx.merchant_name ?? "Onbekend",
+            merchantKey: tx.merchant_key,
+          }
         : extractMerchant(tx.description ?? "", amountAbs);
 
       const key = merchantKey || "nl:unknown";
       if (!groups.has(key)) {
-        groups.set(key, { name: merchantName, occurrences: [], quarterlyHint: false });
+        groups.set(key, {
+          name: merchantName,
+          occurrences: [],
+          quarterlyHint: false,
+        });
         merchantKeys.push(key);
       }
 
       groups.get(key)!.occurrences.push({ date: rawDate, amount: amountAbs });
 
-      // super simpele quarterly hint voor overheid/water/municipality; later uit merchant_map category halen
       const lower = merchantName.toLowerCase();
       if (
         lower.includes("gemeente") ||
@@ -192,30 +274,35 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fetch global map + user overrides
-    const { data: mapRows } = await supabase
-      .from("merchant_map")
-      .select("merchant_key, merchant_name, category, is_variable, recurring_hint, confidence")
-      .in("merchant_key", merchantKeys);
+    // ── Fetch merchant_map + overrides — batched ──────────────
+    const mapRows = await batchedIn<MerchantMapRow>(
+      supabase,
+      "merchant_map",
+      "merchant_key",
+      merchantKeys,
+      "merchant_key, merchant_name, category, is_variable, recurring_hint, confidence"
+    );
 
-    const { data: overrideRows } = await supabase
-      .from("merchant_user_overrides")
-      .select("merchant_key, category, is_variable, recurring_hint")
-      .eq("user_id", user.id)
-      .in("merchant_key", merchantKeys);
+    const overrideRows = await batchedIn<OverrideRow>(
+      supabase,
+      "merchant_user_overrides",
+      "merchant_key",
+      merchantKeys,
+      "merchant_key, category, is_variable, recurring_hint",
+      (q: any) => q.eq("user_id", user.id)
+    );
 
     const mapByKey = new Map<string, MerchantMapRow>();
-    for (const r of (mapRows ?? []) as MerchantMapRow[]) mapByKey.set(r.merchant_key, r);
+    for (const r of mapRows) mapByKey.set(r.merchant_key, r);
 
     const overrideByKey = new Map<string, OverrideRow>();
-    for (const r of (overrideRows ?? []) as OverrideRow[]) overrideByKey.set(r.merchant_key, r);
+    for (const r of overrideRows) overrideByKey.set(r.merchant_key, r);
 
+    // ── Build calendar items ──────────────────────────────────
     const items: CalendarItem[] = [];
 
     for (const [merchantKey, group] of groups) {
       const occ = group.occurrences;
-
-      // Need at least 2 occurrences
       if (occ.length < 2) continue;
 
       const global = mapByKey.get(merchantKey);
@@ -224,42 +311,70 @@ export async function GET(request: NextRequest) {
       const isVar = userOv?.is_variable ?? global?.is_variable ?? false;
       if (isVar) continue;
 
-      const category = userOv?.category ?? global?.category ?? null
-      if (category === 'sparen' || category === 'inkomen' || category === 'intern') continue
+      const category = userOv?.category ?? global?.category ?? null;
+      if (
+        category === "sparen" ||
+        category === "inkomen" ||
+        category === "intern"
+      )
+        continue;
 
-      // user can force recurring
-      const recurring = userOv?.recurring_hint ?? global?.recurring_hint ?? false;
-      const quarterly = recurring ? false : group.quarterlyHint; // keep your old quarterly hint as fallback (we refine later)
-
+      const recurring =
+        userOv?.recurring_hint ?? global?.recurring_hint ?? false;
+      const quarterly = recurring ? false : group.quarterlyHint;
       const name = global?.merchant_name ?? group.name;
 
       // Must be recent enough
-      const recentCutoff = quarterly ? threeMonthsBeforeLatest : refMonthStart;
-      const recentOcc = occ.filter(o => (o.date >= recentCutoff && o.date <= refMonthEnd) || o.date >= refMonthCurrent);
+      const recentCutoff = quarterly
+        ? threeMonthsBeforeLatest
+        : refMonthStart;
+      const recentOcc = occ.filter(
+        (o) =>
+          (o.date >= recentCutoff && o.date <= refMonthEnd) ||
+          o.date >= refMonthCurrent
+      );
       if (recentOcc.length === 0) continue;
 
-      // Compute score + monthly totals
-      const { score, byMonth, medianMonthly } = recurringScore(occ, quarterly);
+      // Use merchant_map confidence if available, otherwise compute
+      let score: number;
+      let byMonth: Record<string, number>;
+      let medianMonthly: number;
 
-      // Decision threshold
-      // monthly: require stronger evidence, quarterly slightly lower
+      if (recurring && global?.confidence) {
+        // Vertrouw op de score van sync/recurring
+        score = global.confidence;
+        const computed = recurringScore(occ, quarterly);
+        byMonth = computed.byMonth;
+        medianMonthly = computed.medianMonthly;
+      } else {
+        const computed = recurringScore(occ, quarterly);
+        score = computed.score;
+        byMonth = computed.byMonth;
+        medianMonthly = computed.medianMonthly;
+      }
+
       const threshold = quarterly ? 0.55 : 0.65;
       if (score < threshold && !recurring) continue;
 
-      // Amount: ref month total if present else median monthly
-      const amount = Math.round(((byMonth[refMonthKey] ?? medianMonthly) || 0) * 100) / 100;
+      const amount =
+        Math.round(((byMonth[refMonthKey] ?? medianMonthly) || 0) * 100) / 100;
       if (!Number.isFinite(amount) || amount <= 0) continue;
 
-      // day-of-month: median of recent occurrences
-      const days = recentOcc.map(o => Number(o.date.slice(8, 10))).filter(d => Number.isFinite(d));
+      const days = recentOcc
+        .map((o) => Number(o.date.slice(8, 10)))
+        .filter((d) => Number.isFinite(d));
       const dom = median(days) || 1;
 
       const dayThis = clampDayUTC(todayYear, todayMonth0, dom);
       const dayNext = clampDayUTC(todayYear, todayMonth0 + 1, dom);
 
       const thisMonth = new Date(Date.UTC(todayYear, todayMonth0, dayThis));
-      const nextMonth = new Date(Date.UTC(todayYear, todayMonth0 + 1, dayNext));
-      const daysUntil = Math.round((thisMonth.getTime() - todayMidnight.getTime()) / 86400000);
+      const nextMonth = new Date(
+        Date.UTC(todayYear, todayMonth0 + 1, dayNext)
+      );
+      const daysUntil = Math.round(
+        (thisMonth.getTime() - todayMidnight.getTime()) / 86400000
+      );
 
       items.push({
         name,
@@ -277,6 +392,7 @@ export async function GET(request: NextRequest) {
 
     items.sort((a, b) => a.dayOfMonth - b.dayOfMonth);
 
+    // ── Saldo check ─────────────────────────────────────────
     const { data: accounts } = await supabase
       .from("bank_accounts")
       .select("balance, account_type")
@@ -284,11 +400,17 @@ export async function GET(request: NextRequest) {
 
     const totalBalance =
       accounts
-        ?.filter((a: any) => a.account_type === "CHECKING" || a.account_type == null)
-        .reduce((sum: number, a: any) => sum + (Number(a.balance) || 0), 0) ?? 0;
+        ?.filter(
+          (a: any) =>
+            a.account_type === "CHECKING" || a.account_type === null
+        )
+        .reduce(
+          (sum: number, a: any) => sum + (Number(a.balance) || 0),
+          0
+        ) ?? 0;
 
     const upcomingTotal = items
-      .filter(i => !i.isPast && i.daysUntil <= 3)
+      .filter((i) => !i.isPast && i.daysUntil <= 3)
       .reduce((sum, i) => sum + i.amount, 0);
 
     return NextResponse.json({
@@ -299,6 +421,9 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("Calendar error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }

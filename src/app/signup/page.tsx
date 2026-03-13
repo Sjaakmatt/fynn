@@ -1,8 +1,10 @@
+// src/app/signup/page.tsx
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import ThemeToggle from '@/components/ThemeToggle'
 
 export default function SignupPage() {
   const [voornaam, setVoornaam] = useState('')
@@ -42,8 +44,8 @@ export default function SignupPage() {
         data: {
           full_name: `${voornaam} ${achternaam}`.trim(),
           marketing_opt_in: marketing,
-        }
-      }
+        },
+      },
     })
 
     if (error) {
@@ -54,11 +56,20 @@ export default function SignupPage() {
     }
   }
 
+  const inputStyle = {
+    backgroundColor: 'var(--surface)',
+    border: '1px solid var(--border)',
+    color: 'var(--text)',
+  }
+
   return (
-    <div className="min-h-screen flex" style={{ backgroundColor: '#F7F5F2' }}>
+    <div className="min-h-screen flex" style={{ backgroundColor: 'var(--bg)' }}>
+
       {/* Links — brand panel */}
-      <div className="hidden lg:flex flex-col justify-between w-96 p-10 text-white"
-        style={{ backgroundColor: '#1A3A2A' }}>
+      <div
+        className="hidden lg:flex flex-col justify-between w-96 p-10 text-white"
+        style={{ backgroundColor: 'var(--brand, #1A3A2A)' }}
+      >
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center">
             <span className="text-white text-xs font-bold">F</span>
@@ -80,8 +91,10 @@ export default function SignupPage() {
             'Koppel je bank in 3 minuten',
           ].map(item => (
             <div key={item} className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full flex items-center justify-center"
-                style={{ backgroundColor: 'rgba(74,222,128,0.2)' }}>
+              <div
+                className="w-4 h-4 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: 'rgba(74,222,128,0.2)' }}
+              >
                 <span style={{ color: '#4ADE80', fontSize: 9 }}>✓</span>
               </div>
               <p className="text-sm opacity-80">{item}</p>
@@ -91,25 +104,35 @@ export default function SignupPage() {
       </div>
 
       {/* Rechts — form */}
-      <div className="flex-1 flex items-center justify-center px-6 py-12">
+      <div className="flex-1 flex items-center justify-center px-6 py-12 relative">
+
+        {/* Theme toggle */}
+        <div className="absolute top-4 right-4">
+          <ThemeToggle />
+        </div>
+
         <div className="w-full max-w-sm">
+
           {/* Mobile logo */}
           <div className="flex items-center gap-2 mb-8 lg:hidden">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: '#1A3A2A' }}>
+            <div
+              className="w-7 h-7 rounded-lg flex items-center justify-center"
+              style={{ backgroundColor: 'var(--brand, #1A3A2A)' }}
+            >
               <span className="text-white text-xs font-bold">F</span>
             </div>
-            <span className="font-semibold">Fynn</span>
+            <span className="font-semibold" style={{ color: 'var(--text)' }}>Fynn</span>
           </div>
 
-          <h1 className="text-2xl font-semibold mb-1" style={{ color: '#111827' }}>
+          <h1 className="text-2xl font-semibold mb-1" style={{ color: 'var(--text)' }}>
             Start gratis
           </h1>
-          <p className="text-sm mb-8" style={{ color: '#9CA3AF' }}>
+          <p className="text-sm mb-8" style={{ color: 'var(--muted)' }}>
             14 dagen gratis. Daarna €12,99/maand. Altijd opzegbaar.
           </p>
 
           <form onSubmit={handleSignup} className="space-y-3">
+
             {/* Naam */}
             <div className="flex gap-2">
               <input
@@ -117,8 +140,8 @@ export default function SignupPage() {
                 placeholder="Voornaam"
                 value={voornaam}
                 onChange={e => setVoornaam(e.target.value)}
-                className="w-full rounded-xl px-4 py-3 text-sm outline-none"
-                style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB', color: '#111827' }}
+                className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all focus:ring-2"
+                style={inputStyle}
                 required
               />
               <input
@@ -126,8 +149,8 @@ export default function SignupPage() {
                 placeholder="Achternaam"
                 value={achternaam}
                 onChange={e => setAchternaam(e.target.value)}
-                className="w-full rounded-xl px-4 py-3 text-sm outline-none"
-                style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB', color: '#111827' }}
+                className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all focus:ring-2"
+                style={inputStyle}
                 required
               />
             </div>
@@ -138,8 +161,8 @@ export default function SignupPage() {
               placeholder="E-mailadres"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full rounded-xl px-4 py-3 text-sm outline-none"
-              style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB', color: '#111827' }}
+              className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all focus:ring-2"
+              style={inputStyle}
               required
             />
 
@@ -149,8 +172,8 @@ export default function SignupPage() {
               placeholder="Wachtwoord (min. 8 tekens)"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full rounded-xl px-4 py-3 text-sm outline-none"
-              style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB', color: '#111827' }}
+              className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all focus:ring-2"
+              style={inputStyle}
               required
             />
             <input
@@ -158,11 +181,12 @@ export default function SignupPage() {
               placeholder="Wachtwoord bevestigen"
               value={passwordConfirm}
               onChange={e => setPasswordConfirm(e.target.value)}
-              className="w-full rounded-xl px-4 py-3 text-sm outline-none"
+              className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all focus:ring-2"
               style={{
-                backgroundColor: '#FFFFFF',
-                border: `1px solid ${passwordConfirm && password !== passwordConfirm ? '#EF4444' : '#E5E7EB'}`,
-                color: '#111827'
+                ...inputStyle,
+                borderColor: passwordConfirm && password !== passwordConfirm
+                  ? '#EF4444'
+                  : 'var(--border)',
               }}
               required
             />
@@ -175,15 +199,15 @@ export default function SignupPage() {
                   checked={tos}
                   onChange={e => setTos(e.target.checked)}
                   className="mt-0.5 rounded"
-                  style={{ accentColor: '#1A3A2A' }}
+                  style={{ accentColor: 'var(--brand, #1A3A2A)' }}
                 />
-                <span className="text-xs leading-relaxed" style={{ color: '#6B7280' }}>
+                <span className="text-xs leading-relaxed" style={{ color: 'var(--muted)' }}>
                   Ik ga akkoord met de{' '}
-                  <a href="/voorwaarden" className="underline" style={{ color: '#1A3A2A' }}>
+                  <a href="/voorwaarden" className="underline" style={{ color: 'var(--brand, #1A3A2A)' }}>
                     algemene voorwaarden
                   </a>{' '}
                   en het{' '}
-                  <a href="/privacy" className="underline" style={{ color: '#1A3A2A' }}>
+                  <a href="/privacy" className="underline" style={{ color: 'var(--brand, #1A3A2A)' }}>
                     privacybeleid
                   </a>
                   . *
@@ -196,9 +220,9 @@ export default function SignupPage() {
                   checked={marketing}
                   onChange={e => setMarketing(e.target.checked)}
                   className="mt-0.5 rounded"
-                  style={{ accentColor: '#1A3A2A' }}
+                  style={{ accentColor: 'var(--brand, #1A3A2A)' }}
                 />
-                <span className="text-xs leading-relaxed" style={{ color: '#6B7280' }}>
+                <span className="text-xs leading-relaxed" style={{ color: 'var(--muted)' }}>
                   Stuur mij wekelijkse financiële tips en productnieuws. Je kunt je altijd afmelden.
                 </span>
               </label>
@@ -212,15 +236,15 @@ export default function SignupPage() {
               type="submit"
               disabled={loading}
               className="w-full rounded-xl px-4 py-3 text-sm font-medium text-white disabled:opacity-50 transition-opacity"
-              style={{ backgroundColor: '#1A3A2A' }}
+              style={{ backgroundColor: 'var(--brand, #1A3A2A)' }}
             >
               {loading ? 'Account aanmaken...' : 'Gratis starten →'}
             </button>
           </form>
 
-          <p className="text-sm text-center mt-5" style={{ color: '#9CA3AF' }}>
+          <p className="text-sm text-center mt-5" style={{ color: 'var(--muted)' }}>
             Al een account?{' '}
-            <a href="/login" className="font-medium" style={{ color: '#1A3A2A' }}>
+            <a href="/login" className="font-medium" style={{ color: 'var(--brand, #1A3A2A)' }}>
               Inloggen
             </a>
           </p>

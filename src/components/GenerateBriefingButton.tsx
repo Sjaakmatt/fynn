@@ -25,7 +25,7 @@ export default function GenerateBriefingButton() {
       onClick={handleGenerate}
       disabled={loading}
       className="text-xs font-medium px-3 py-2 rounded-lg text-white disabled:opacity-50 transition-opacity"
-      style={{ backgroundColor: '#1A3A2A' }}
+      style={{ backgroundColor: 'var(--brand)' }}
     >
       {loading ? 'Genereren...' : '✨ Genereer'}
     </button>

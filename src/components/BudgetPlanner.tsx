@@ -1,3 +1,4 @@
+// src/components/BudgetPlanner.tsx
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
@@ -45,8 +46,9 @@ export default function BudgetPlanner() {
       const data = await res.json()
       if (data.budget) setBudget(data.budget)
       if (data.uitgavenDezeMaand) setUitgaven(data.uitgavenDezeMaand)
-      if (data.totalInkomen) setTotalInkomen(data.totalInkomen)
-    } catch (err) {
+      const inkomen = Number(data.totalInkomen ?? 0)
+      setTotalInkomen(Number.isFinite(inkomen) ? inkomen : 0)
+    } catch {
       setError('Kon budget niet laden. Probeer het opnieuw.')
     } finally {
       setLoading(false)
@@ -75,9 +77,10 @@ export default function BudgetPlanner() {
       }
       if (data.categories) {
         setBudget({ categories: data.categories, updated_at: new Date().toISOString() })
-        if (data.totalInkomen) setTotalInkomen(data.totalInkomen)
+        const inkomen = Number(data.totalInkomen ?? 0)
+        if (Number.isFinite(inkomen)) setTotalInkomen(inkomen)
       }
-    } catch (err) {
+    } catch {
       setError('Kon budget niet genereren. Probeer het opnieuw.')
     } finally {
       setGenerating(false)
@@ -94,7 +97,7 @@ export default function BudgetPlanner() {
         body: JSON.stringify({ categories }),
       })
       if (!res.ok) throw new Error('Save failed')
-    } catch (err) {
+    } catch {
       setError('Wijziging kon niet opgeslagen worden.')
     } finally {
       setSaving(false)
@@ -102,7 +105,7 @@ export default function BudgetPlanner() {
   }
 
   async function updateBudgetAmount(category: string, newAmount: number) {
-    if (!budget || isNaN(newAmount) || newAmount < 0) {
+    if (!budget || !Number.isFinite(newAmount) || newAmount < 0) {
       setEditingId(null)
       return
     }
@@ -128,8 +131,8 @@ export default function BudgetPlanner() {
       setError(`"${cat}" bestaat al in je budget.`)
       return
     }
-    const amount = parseFloat(newBudget)
-    if (isNaN(amount) || amount <= 0) return
+    const amount = Number(newBudget)
+    if (!Number.isFinite(amount) || amount <= 0) return
     const updated = [...budget.categories, {
       category: cat,
       budget: Math.round(amount),
@@ -148,7 +151,6 @@ export default function BudgetPlanner() {
   const resterendBudget = totalBudget - totalUitgegeven
   const resterendInkomen = totalInkomen - totalBudget
 
-  // Bereken dag-voortgang voor context
   const today = new Date()
   const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
   const dayProgress = today.getDate() / daysInMonth
@@ -248,7 +250,7 @@ export default function BudgetPlanner() {
               {resterendInkomen >= 0 ? 'Niet ingepland' : 'Over budget'}
             </p>
             <p className="text-lg font-bold" style={{
-              color: resterendInkomen < 0 ? '#EF4444' : resterendInkomen < 100 ? '#F59E0B' : '#1A3A2A'
+              color: resterendInkomen < 0 ? '#EF4444' : resterendInkomen < 100 ? '#F59E0B' : '#4ade80'
             }}>
               €{Math.abs(resterendInkomen).toFixed(0)}
             </p>
@@ -278,7 +280,7 @@ export default function BudgetPlanner() {
               </p>
             </div>
             <p className="text-sm font-semibold" style={{
-              color: resterendBudget < 0 ? '#EF4444' : resterendBudget < 200 ? '#F59E0B' : '#1A3A2A'
+              color: resterendBudget < 0 ? '#EF4444' : resterendBudget < 200 ? '#F59E0B' : '#4ade80'
             }}>
               {resterendBudget >= 0 ? `€${resterendBudget.toFixed(0)} over` : `€${Math.abs(resterendBudget).toFixed(0)} te veel`}
             </p>
@@ -292,7 +294,6 @@ export default function BudgetPlanner() {
             const pct = cat.budget > 0 ? Math.min((spent / cat.budget) * 100, 100) : 0
             const overBudget = spent > cat.budget
             const almostOver = !overBudget && pct > 80
-            // Geeft context: als je op dag 10 van 30 al 60% hebt uitgegeven, loop je voor
             const paceWarning = !overBudget && !almostOver && pct > (dayProgress * 100 + 15)
             const isEditing = editingId === cat.category
 
@@ -300,10 +301,10 @@ export default function BudgetPlanner() {
               <div key={cat.category} className="px-5 py-4 group"
                 style={{ borderBottom: i < budget.categories.length - 1 ? '1px solid var(--border)' : 'none' }}>
                 <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2 flex-1">
-                    <span className="text-lg">{cat.icon}</span>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium capitalize" style={{ color: 'var(--text)' }}>
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span className="text-lg shrink-0">{cat.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium capitalize truncate" style={{ color: 'var(--text)' }}>
                         {cat.category}
                       </p>
                       {overBudget && (
@@ -322,14 +323,14 @@ export default function BudgetPlanner() {
                         </p>
                       )}
                       {cat.tip && !overBudget && !almostOver && !paceWarning && (
-                        <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                        <p className="text-xs truncate" style={{ color: 'var(--muted)' }}>
                           {cat.tip}
                         </p>
                       )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0 ml-2">
                     <div className="text-right">
                       <span className="text-xs" style={{ color: 'var(--muted)' }}>
                         €{spent.toFixed(0)} /&nbsp;
@@ -340,9 +341,9 @@ export default function BudgetPlanner() {
                           defaultValue={cat.budget}
                           autoFocus
                           min={0}
-                          onBlur={e => updateBudgetAmount(cat.category, parseFloat(e.target.value))}
+                          onBlur={e => updateBudgetAmount(cat.category, Number(e.target.value))}
                           onKeyDown={e => {
-                            if (e.key === 'Enter') updateBudgetAmount(cat.category, parseFloat((e.target as HTMLInputElement).value))
+                            if (e.key === 'Enter') updateBudgetAmount(cat.category, Number((e.target as HTMLInputElement).value))
                             if (e.key === 'Escape') setEditingId(null)
                           }}
                           className="w-20 text-right text-sm font-semibold rounded-lg px-2 py-1 outline-none"
@@ -361,7 +362,7 @@ export default function BudgetPlanner() {
                     </div>
                     <button
                       onClick={() => removeCategory(cat.category)}
-                      className="opacity-0 group-hover:opacity-100 text-xs w-5 h-5 rounded-full flex items-center justify-center transition-opacity"
+                      className="opacity-40 sm:opacity-0 sm:group-hover:opacity-100 text-xs w-5 h-5 rounded-full flex items-center justify-center transition-opacity"
                       style={{ color: '#EF4444', backgroundColor: 'rgba(239,68,68,0.1)' }}
                       title="Verwijder categorie"
                     >
@@ -376,7 +377,7 @@ export default function BudgetPlanner() {
                     className="h-full rounded-full transition-all duration-700"
                     style={{
                       width: `${pct}%`,
-                      backgroundColor: overBudget ? '#EF4444' : almostOver ? '#F59E0B' : '#1A3A2A',
+                      backgroundColor: overBudget ? '#EF4444' : almostOver ? '#F59E0B' : '#4ade80',
                     }}
                   />
                 </div>

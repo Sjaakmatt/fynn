@@ -14,10 +14,12 @@ export default function UitgaveCheck() {
     setLoading(true)
     setAdvies('')
     try {
+      const amount = Number(bedrag)
+      if (!Number.isFinite(amount) || amount <= 0) return
       const response = await fetch('/api/ai/uitgave-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bedrag: parseFloat(bedrag), omschrijving }),
+        body: JSON.stringify({ bedrag: amount, omschrijving }),
       })
       const data = await response.json()
       if (data.advies) {

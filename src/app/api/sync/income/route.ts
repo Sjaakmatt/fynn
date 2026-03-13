@@ -78,7 +78,8 @@ export async function POST(_req: NextRequest) {
     .gt("amount", 0)
     .gte("transaction_date", from)
     .not("merchant_key", "is", null)
-    .order("transaction_date", { ascending: true });
+    .order("transaction_date", { ascending: true })
+    .limit(3000);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -203,13 +204,32 @@ export async function POST(_req: NextRequest) {
     }
 
     if (toDeactivate.length > 0) {
-      await supabase
-        .from("merchant_map")
-        .update({ income_hint: false, updated_at: new Date().toISOString() })
-        .in("merchant_key", toDeactivate);
+      // Check of andere users nog inkomen ontvangen van deze merchants
+      const { data: otherUserTxs } = await supabase
+        .from("transactions")
+        .select("merchant_key")
+        .in("merchant_key", toDeactivate)
+        .gt("amount", 0)
+        .neq("user_id", user.id)
+        .gte("transaction_date", from)
+        .limit(1);
 
-      deactivated = toDeactivate.length;
-      console.log(`[Income] Gedeactiveerd:`, toDeactivate);
+      const stillActiveElsewhere = new Set(
+        (otherUserTxs ?? []).map((r: any) => r.merchant_key)
+      );
+
+      const safeToDeactivate = toDeactivate.filter(
+        (k) => !stillActiveElsewhere.has(k)
+      );
+
+      if (safeToDeactivate.length > 0) {
+        await supabase
+          .from("merchant_map")
+          .update({ income_hint: false, updated_at: new Date().toISOString() })
+          .in("merchant_key", safeToDeactivate);
+
+        deactivated = safeToDeactivate.length;
+      }
     }
   }
 

@@ -1,3 +1,4 @@
+// src/components/ChatCoach.tsx
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
@@ -14,7 +15,12 @@ const SUGGESTED_QUESTIONS = [
   'Hoe ziet mijn budget eruit?',
 ]
 
-export default function ChatCoach() {
+interface Props {
+  /** When true, renders without its own card wrapper (for use inside modals) */
+  embedded?: boolean
+}
+
+export default function ChatCoach({ embedded = false }: Props) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -48,16 +54,20 @@ export default function ChatCoach() {
     }
   }
 
-  return (
-    <div className="rounded-2xl overflow-hidden"
-      style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
-      
-      <div className="px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
-        <h2 className="font-semibold text-sm" style={{ color: 'var(--text)' }}>Chat met Fynn</h2>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>Stel elke financiële vraag</p>
-      </div>
+  const Wrapper = embedded ? 'div' : CardWrapper
 
-      <div className="px-5 py-4 min-h-[180px] max-h-[380px] overflow-y-auto">
+  return (
+    <Wrapper>
+      {/* Header — only when standalone */}
+      {!embedded && (
+        <div className="px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+          <h2 className="font-semibold text-sm" style={{ color: 'var(--text)' }}>Chat met Fynn</h2>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>Stel elke financiële vraag</p>
+        </div>
+      )}
+
+      {/* Messages */}
+      <div className={`${embedded ? '' : 'px-5 py-4'} min-h-[160px] max-h-[50vh] overflow-y-auto`}>
         {messages.length === 0 ? (
           <div>
             <p className="text-sm mb-3" style={{ color: 'var(--muted)' }}>Waar kan ik je mee helpen?</p>
@@ -67,10 +77,10 @@ export default function ChatCoach() {
                   key={q}
                   onClick={() => sendMessage(q)}
                   className="text-xs px-3 py-2 rounded-lg transition-colors"
-                  style={{ 
-                    backgroundColor: 'var(--tab-bg)', 
+                  style={{
+                    backgroundColor: 'var(--tab-bg)',
                     color: 'var(--muted)',
-                    border: '1px solid var(--border)'
+                    border: '1px solid var(--border)',
                   }}
                 >
                   {q}
@@ -83,7 +93,7 @@ export default function ChatCoach() {
             {messages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
-                  className="max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed"
+                  className="max-w-[85%] px-4 py-3 text-sm leading-relaxed"
                   style={msg.role === 'user'
                     ? { backgroundColor: 'var(--brand)', color: '#FFFFFF', borderRadius: '16px 16px 4px 16px' }
                     : { backgroundColor: 'var(--tab-bg)', color: 'var(--text)', borderRadius: '16px 16px 16px 4px' }
@@ -109,7 +119,8 @@ export default function ChatCoach() {
         )}
       </div>
 
-      <div className="px-5 py-4 border-t" style={{ borderColor: 'var(--border)' }}>
+      {/* Input */}
+      <div className={`${embedded ? 'pt-3' : 'px-5 py-4 border-t'}`} style={embedded ? {} : { borderColor: 'var(--border)' }}>
         <div className="flex gap-2">
           <input
             type="text"
@@ -118,22 +129,33 @@ export default function ChatCoach() {
             onKeyDown={e => e.key === 'Enter' && sendMessage(input)}
             placeholder="Stel een vraag..."
             className="flex-1 rounded-xl px-4 py-3 text-sm outline-none"
-            style={{ 
-              backgroundColor: 'var(--tab-bg)', 
+            style={{
+              backgroundColor: 'var(--tab-bg)',
               color: 'var(--text)',
-              border: '1px solid var(--border)'
+              border: '1px solid var(--border)',
             }}
           />
           <button
             onClick={() => sendMessage(input)}
             disabled={loading || !input.trim()}
-            className="px-4 py-3 rounded-xl text-sm font-medium disabled:opacity-40 transition-opacity"
+            className="px-4 py-3 rounded-xl text-sm font-medium disabled:opacity-40 transition-opacity shrink-0"
             style={{ backgroundColor: 'var(--brand)', color: '#FFFFFF' }}
           >
             →
           </button>
         </div>
       </div>
+    </Wrapper>
+  )
+}
+
+function CardWrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
+    >
+      {children}
     </div>
   )
 }

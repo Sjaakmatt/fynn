@@ -20,6 +20,8 @@ export async function GET(_request: NextRequest) {
       .lt('amount', 0)
       .gte('transaction_date', from)
       .order('transaction_date', { ascending: false })
+      .limit(2000)
+
 
     if (!transactions || transactions.length === 0) {
       return NextResponse.json({ subscriptions: [], totaalPerMaand: 0 })

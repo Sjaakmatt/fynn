@@ -1,28 +1,27 @@
+// src/app/api/sync/transactions/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { POST as enableBankingSync } from "@/app/api/enablebanking/sync/route";
+import { POST as plaidSync } from "@/app/api/plaid/sync/route";
 
-// Wrapper: oude endpoint blijft bestaan, maar gebruikt de nieuwe EB sync
+const provider = process.env.NEXT_PUBLIC_BANKING_PROVIDER ?? "enablebanking";
+
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // default merge; support reset for debugging
-  const body = await request.json().catch(() => ({}));
-  const mode = body?.mode === "reset" ? "reset" : "merge";
-
-  // Call internal route (same origin)
-  const res = await fetch(new URL("/api/enablebanking/sync", request.url), {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Cookie: request.headers.get("cookie") ?? "" },
-    body: JSON.stringify({ mode }),
-  });
-
-  const data = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    return NextResponse.json({ error: data?.error ?? "EnableBanking sync failed" }, { status: res.status });
+  try {
+    const handler = provider === "plaid" ? plaidSync : enableBankingSync;
+    return await handler(request);
+  } catch (error) {
+    console.error("[sync/transactions] Error:", error);
+    return NextResponse.json(
+      { error: "Sync failed" },
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json({ success: true, ...data });
 }

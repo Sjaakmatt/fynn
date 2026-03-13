@@ -1,3 +1,4 @@
+// src/components/checkout/CheckoutModal.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -16,17 +17,41 @@ interface Props {
   onClose: () => void
 }
 
+function useIsDark() {
+  const [dark, setDark] = useState(false)
+  useEffect(() => {
+    const check = () => setDark(document.documentElement.classList.contains('dark'))
+    check()
+    const obs = new MutationObserver(check)
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    return () => obs.disconnect()
+  }, [])
+  return dark
+}
+
 export default function CheckoutModal({ isOpen, onClose }: Props) {
   const [clientSecret, setClientSecret] = useState<string | null>(null)
   const [intentType, setIntentType] = useState<'payment_intent' | 'setup_intent'>('setup_intent')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [subscriptionId, setSubscriptionId] = useState<string | null>(null)
+  const isDark = useIsDark()
+
+  // Escape handler
+  useEffect(() => {
+    if (!isOpen) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [isOpen, onClose])
 
   useEffect(() => {
     if (!isOpen) return
     setLoading(true)
     setError(null)
+    setClientSecret(null)
 
     fetch('/api/stripe/create-payment-intent', { method: 'POST' })
       .then(r => r.json())
@@ -36,7 +61,7 @@ export default function CheckoutModal({ isOpen, onClose }: Props) {
         } else {
           setClientSecret(data.clientSecret)
           setIntentType(data.intentType)
-          setSubscriptionId(data.subscriptionId) // ← toevoegen
+          setSubscriptionId(data.subscriptionId)
         }
         setLoading(false)
       })
@@ -47,6 +72,45 @@ export default function CheckoutModal({ isOpen, onClose }: Props) {
   }, [isOpen])
 
   if (!isOpen) return null
+
+  // Stripe Elements verwacht hex kleuren, geen CSS variables
+  const stripeAppearance = {
+    theme: 'flat' as const,
+    variables: {
+      colorPrimary: '#1A3A2A',
+      colorBackground: isDark ? '#1A1A1A' : '#FFFFFF',
+      colorText: isDark ? '#F9FAFB' : '#111827',
+      colorTextSecondary: isDark ? '#6B7280' : '#9CA3AF',
+      colorDanger: '#EF4444',
+      fontFamily: 'Sora, sans-serif',
+      borderRadius: '12px',
+      spacingUnit: '4px',
+    },
+    rules: {
+      '.Input': {
+        backgroundColor: isDark ? '#252525' : '#FFFFFF',
+        borderColor: isDark ? '#2A2A2A' : '#E5E7EB',
+        color: isDark ? '#F9FAFB' : '#111827',
+      },
+      '.Input:focus': {
+        borderColor: '#1A3A2A',
+        boxShadow: '0 0 0 1px #1A3A2A',
+      },
+      '.Tab': {
+        backgroundColor: isDark ? '#252525' : '#F0EDE8',
+        borderColor: isDark ? '#2A2A2A' : '#E5E7EB',
+        color: isDark ? '#9CA3AF' : '#6B7280',
+      },
+      '.Tab--selected': {
+        backgroundColor: isDark ? '#2D2D2D' : '#FFFFFF',
+        borderColor: '#1A3A2A',
+        color: isDark ? '#F9FAFB' : '#111827',
+      },
+      '.Label': {
+        color: isDark ? '#9CA3AF' : '#6B7280',
+      },
+    },
+  }
 
   return (
     <div
@@ -78,8 +142,10 @@ export default function CheckoutModal({ isOpen, onClose }: Props) {
         </div>
 
         {/* Wat je krijgt */}
-        <div className="rounded-2xl p-4 mb-5 space-y-2"
-          style={{ backgroundColor: 'var(--tab-bg)' }}>
+        <div
+          className="rounded-2xl p-4 mb-5 space-y-2"
+          style={{ backgroundColor: 'var(--tab-bg)' }}
+        >
           {[
             '✓ Automatische bankrekening koppeling',
             '✓ Wekelijkse persoonlijke briefing',
@@ -94,14 +160,18 @@ export default function CheckoutModal({ isOpen, onClose }: Props) {
         {/* Stripe form */}
         {loading && (
           <div className="flex items-center justify-center py-10">
-            <div className="w-6 h-6 border-2 rounded-full animate-spin"
-              style={{ borderColor: 'var(--border)', borderTopColor: 'var(--brand)' }} />
+            <div
+              className="w-6 h-6 border-2 rounded-full animate-spin"
+              style={{ borderColor: 'var(--border)', borderTopColor: 'var(--brand)' }}
+            />
           </div>
         )}
 
         {error && (
-          <div className="rounded-2xl px-4 py-3 text-sm"
-            style={{ backgroundColor: 'rgba(239,68,68,0.08)', color: '#EF4444' }}>
+          <div
+            className="rounded-2xl px-4 py-3 text-sm"
+            style={{ backgroundColor: 'rgba(239,68,68,0.08)', color: '#EF4444' }}
+          >
             {error}
           </div>
         )}
@@ -111,23 +181,12 @@ export default function CheckoutModal({ isOpen, onClose }: Props) {
             stripe={stripePromise}
             options={{
               clientSecret,
-              appearance: {
-                theme: 'flat',
-                variables: {
-                  colorPrimary: '#1A3A2A',
-                  colorBackground: 'var(--surface)',
-                  colorText: '#111827',
-                  colorDanger: '#EF4444',
-                  fontFamily: 'Sora, sans-serif',
-                  borderRadius: '12px',
-                  spacingUnit: '4px',
-                },
-              },
+              appearance: stripeAppearance,
             }}
           >
             <PaymentForm
               intentType={intentType}
-              subscriptionId={subscriptionId}  // ← toevoegen
+              subscriptionId={subscriptionId}
               onSuccess={onClose}
             />
           </Elements>
@@ -166,23 +225,18 @@ function PaymentForm({
 
     const returnUrl = `${window.location.origin}/dashboard?success=true`
 
-    let result
+    const result = intentType === 'setup_intent'
+      ? await stripe.confirmSetup({
+          elements,
+          confirmParams: { return_url: returnUrl },
+          redirect: 'if_required',
+        })
+      : await stripe.confirmPayment({
+          elements,
+          confirmParams: { return_url: returnUrl },
+          redirect: 'if_required',
+        })
 
-    if (intentType === 'setup_intent') {
-      result = await stripe.confirmSetup({
-        elements,
-        confirmParams: { return_url: returnUrl },
-        redirect: 'if_required',
-      })
-    } else {
-      result = await stripe.confirmPayment({
-        elements,
-        confirmParams: { return_url: returnUrl },
-        redirect: 'if_required',
-      })
-    }
-
-    // Na result check, vervang setSuccess(true) door:
     if (result.error) {
       setError(result.error.message ?? 'Betaling mislukt. Probeer opnieuw.')
       setSubmitting(false)
@@ -190,16 +244,17 @@ function PaymentForm({
     }
 
     // Direct status updaten — niet wachten op webhook
-    await fetch('/api/stripe/confirm-subscription', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subscriptionId: subscriptionId }),
-    })
+    if (subscriptionId) {
+      await fetch('/api/stripe/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscriptionId }),
+      })
+    }
 
     setSuccess(true)
     setSubmitting(false)
     setTimeout(() => {
-      onSuccess()
       window.location.href = '/dashboard?success=true'
     }, 1500)
   }

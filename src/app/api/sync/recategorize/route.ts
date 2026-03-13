@@ -89,11 +89,12 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      const amt = Number(tx.amount ?? 0);
       const newCategory = categorizeTransaction(
         tx.description ?? '',
-        Number(tx.amount),
+        Number.isFinite(amt) ? amt : 0,
         merchantCategory,
-      )
+      );
 
       if (newCategory !== tx.category) {
         txUpdates.push({ id: tx.id, category: newCategory })
@@ -124,19 +125,24 @@ export async function POST(request: NextRequest) {
 
     // 6) Update merchant_map voor merchants die null/overig category hadden
     let merchantMapUpdated = 0
-    for (const [merchantKey, category] of merchantCategoryUpdates) {
-      const { error } = await supabase
-        .from('merchant_map')
-        .update({
-          category,
-          confidence: 0.6,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('merchant_key', merchantKey)
-        .or('category.is.null,category.eq.overig')
-
-      if (!error) merchantMapUpdated++
+    const mmUpdates = Array.from(merchantCategoryUpdates.entries());
+    for (let i = 0; i < mmUpdates.length; i += 50) {
+      const batch = mmUpdates.slice(i, i + 50);
+      await Promise.all(
+        batch.map(([merchantKey, category]) =>
+          supabase
+            .from("merchant_map")
+            .update({
+              category,
+              confidence: 0.6,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("merchant_key", merchantKey)
+            .or("category.is.null,category.eq.overig")
+        )
+      );
     }
+    merchantMapUpdated = mmUpdates.length;
 
     return NextResponse.json({
       success: true,

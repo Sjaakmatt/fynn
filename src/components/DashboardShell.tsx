@@ -1,3 +1,4 @@
+// src/components/DashboardShell.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -18,6 +19,7 @@ import VasteLastenKalender from './VasteLastenKalender'
 import SpaargoalCoach from './SpaargoalCoach'
 import CoachModal from './CoachModal'
 import BankConnectModal from './BankConnectModal'
+
 
 const CATEGORY_ICONS: Record<string, string> = {
   'wonen': '🏠', 'boodschappen': '🛒', 'eten & drinken': '🍽️',
@@ -73,13 +75,12 @@ export default function DashboardShell({
   const [showBreakdown, setShowBreakdown] = useState(false)
 
   const [isJustConnected, setIsJustConnected] = useState(
-  searchParams.get('connected') === 'true'
-)
+    searchParams.get('connected') === 'true'
+  )
 
   useEffect(() => {
     if (isJustConnected) {
       router.replace('/dashboard')
-      // Geef server component tijd om data op te halen
       const timer = setTimeout(() => {
         router.refresh()
         setIsJustConnected(false)
@@ -87,6 +88,16 @@ export default function DashboardShell({
       return () => clearTimeout(timer)
     }
   }, [isJustConnected, router])
+
+  // Escape handler for breakdown modal
+  useEffect(() => {
+    if (!showBreakdown) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowBreakdown(false)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [showBreakdown])
 
   const firstName = user.firstName ?? user.email?.split('@')[0] ?? 'daar'
   const hasData = accounts.length > 0
@@ -120,16 +131,16 @@ export default function DashboardShell({
                 </button>
               )}
               <ThemeToggle />
+              <button
+                onClick={() => router.push('/account')}
+                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{ backgroundColor: 'var(--tab-bg)' }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--muted)' }}>
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+                </svg>
+              </button>
             </div>
-            <button
-              onClick={() => router.push('/account')}
-              className="w-8 h-8 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: 'var(--tab-bg)' }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--muted)' }}>
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
-              </svg>
-            </button>
           </div>
           {hasData && (
             <div className="max-w-2xl mx-auto px-4 pb-3">
@@ -210,13 +221,13 @@ export default function DashboardShell({
                     })
                     .map(account => (
                       <div key={account.id} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full"
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-2 h-2 rounded-full shrink-0"
                             style={{ backgroundColor: account.account_type === 'SAVINGS' ? '#60a5fa' : '#4ade80' }} />
-                          <p className="text-sm opacity-80">{account.account_name}</p>
+                          <p className="text-sm opacity-80 truncate">{account.account_name}</p>
                         </div>
                         {account.balance != null && (
-                          <p className="text-sm font-semibold">
+                          <p className="text-sm font-semibold tabular-nums shrink-0 ml-3">
                             €{Number(account.balance).toFixed(0)}
                           </p>
                         )}
@@ -274,7 +285,7 @@ export default function DashboardShell({
                 <div className="rounded-2xl p-5 flex items-center gap-4"
                   style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
                   <span className="text-2xl">📬</span>
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium mb-0.5" style={{ color: 'var(--text)' }}>
                       Wekelijkse briefing van Fynn
                     </p>
@@ -282,8 +293,11 @@ export default function DashboardShell({
                       Elke maandag een persoonlijk overzicht — Pro only.
                     </p>
                   </div>
-                  <button className="text-xs px-3 py-2 rounded-xl text-white flex-shrink-0"
-                    style={{ backgroundColor: 'var(--brand)' }}>
+                  <button
+                    onClick={() => router.push('/pricing')}
+                    className="text-xs px-3 py-2 rounded-xl text-white shrink-0"
+                    style={{ backgroundColor: 'var(--brand)' }}
+                  >
                     Pro
                   </button>
                 </div>
@@ -315,8 +329,11 @@ export default function DashboardShell({
                   <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
                     Zie precies welke abonnementen je hebt en wat ze kosten — alleen voor Pro.
                   </p>
-                  <button className="text-xs px-4 py-2 rounded-xl text-white"
-                    style={{ backgroundColor: 'var(--brand)' }}>
+                  <button
+                    onClick={() => router.push('/pricing')}
+                    className="text-xs px-4 py-2 rounded-xl text-white"
+                    style={{ backgroundColor: 'var(--brand)' }}
+                  >
                     Upgrade naar Pro
                   </button>
                 </div>
@@ -324,19 +341,22 @@ export default function DashboardShell({
             </TabPanel>
           )}
 
+          {/* KALENDER TAB — TabPanel handles pro gate */}
           {hasData && (
             <TabPanel id="kalender">
               <VasteLastenKalender />
             </TabPanel>
           )}
 
-          {hasData && isPro && (
+          {/* SPAREN TAB — TabPanel handles pro gate */}
+          {hasData && (
             <TabPanel id="sparen">
               <SpaargoalCoach />
             </TabPanel>
           )}
 
-          {hasData && isPro && (
+          {/* BUDGET TAB — TabPanel handles pro gate */}
+          {hasData && (
             <TabPanel id="budget">
               <BudgetPlanner />
               <AFMDisclaimer />
@@ -410,10 +430,10 @@ export default function DashboardShell({
                     </p>
                     {Object.entries(variabelPerCategorie).map(([cat, v]) => (
                       <div key={cat} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-base">{CATEGORY_ICONS[cat] ?? '📦'}</span>
-                          <div>
-                            <p className="text-xs font-medium" style={{ color: 'var(--text)' }}>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-base shrink-0">{CATEGORY_ICONS[cat] ?? '📦'}</span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium truncate" style={{ color: 'var(--text)' }}>
                               {CATEGORY_LABELS[cat] ?? cat}
                             </p>
                             <p className="text-xs" style={{ color: 'var(--muted)' }}>
@@ -421,7 +441,7 @@ export default function DashboardShell({
                             </p>
                           </div>
                         </div>
-                        <p className="text-xs font-semibold" style={{ color: '#FCA5A5' }}>
+                        <p className="text-xs font-semibold shrink-0 ml-3" style={{ color: '#FCA5A5' }}>
                           − €{v.resterend}
                         </p>
                       </div>

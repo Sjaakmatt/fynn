@@ -38,6 +38,7 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
   const [portalLoading, setPortalLoading] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
 
   const initials = (user.fullName ?? user.email)
     .split(/[\s@]/)
@@ -49,9 +50,11 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
   // ── Handlers ──────────────────────────────────────────────────
 
   async function handleSaveName() {
+    const trimmed = fullName.trim()
+    if (!trimmed) return
     setSaving(true)
-    await supabase.from('profiles').update({ full_name: fullName.trim() }).eq('id', user.id)
-    await supabase.auth.updateUser({ data: { full_name: fullName.trim() } })
+    await supabase.from('profiles').update({ full_name: trimmed }).eq('id', user.id)
+    await supabase.auth.updateUser({ data: { full_name: trimmed } })
     setSaving(false)
     setEditingName(false)
   }
@@ -68,6 +71,7 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
   }
 
   async function handleLogout() {
+    setLoggingOut(true)
     await supabase.auth.signOut()
     router.push('/login')
   }
@@ -75,7 +79,7 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
   async function handleDeleteAccount() {
     setDeleting(true)
     try {
-      await fetch('/api/account/delete', { method: 'POST' })
+      await fetch('/api/account/delete', { method: 'DELETE' })
       await supabase.auth.signOut()
       router.push('/')
     } catch {
@@ -88,24 +92,89 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
   function getBadge() {
     switch (subscription.status) {
       case 'active':
-        return { label: 'Pro', color: '#059669', bg: '#ECFDF5', border: '#A7F3D0' }
+        return { label: 'Pro', className: 'badge-pro' }
       case 'trialing': {
         const d = subscription.trialEndsAt
           ? Math.max(0, Math.ceil((new Date(subscription.trialEndsAt).getTime() - Date.now()) / 86400000))
           : 0
-        return { label: `Trial · ${d}d`, color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' }
+        return { label: `Trial · ${d}d`, className: 'badge-trial' }
       }
       case 'past_due':
-        return { label: 'Betaling mislukt', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' }
+        return { label: 'Betaling mislukt', className: 'badge-error' }
       default:
-        return { label: 'Free', color: '#6B7280', bg: 'var(--tab-bg)', border: 'var(--border)' }
+        return { label: 'Free', className: 'badge-free' }
     }
   }
 
   const badge = getBadge()
 
+  function maskIban(iban: string | null) {
+    if (!iban) return '····'
+    if (iban.length <= 8) return iban
+    return `${iban.slice(0, 4)} •••• ${iban.slice(-4)}`
+  }
+
   return (
     <div className="min-h-screen transition-colors" style={{ backgroundColor: 'var(--bg)' }}>
+      <style>{`
+        .badge-pro {
+          background: rgba(5, 150, 105, 0.12);
+          color: #059669;
+          border: 1px solid rgba(5, 150, 105, 0.25);
+        }
+        .dark .badge-pro {
+          background: rgba(16, 185, 129, 0.12);
+          color: #34D399;
+          border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+        .badge-trial {
+          background: rgba(217, 119, 6, 0.12);
+          color: #D97706;
+          border: 1px solid rgba(217, 119, 6, 0.25);
+        }
+        .dark .badge-trial {
+          background: rgba(245, 158, 11, 0.12);
+          color: #FBBF24;
+          border: 1px solid rgba(245, 158, 11, 0.2);
+        }
+        .badge-error {
+          background: rgba(220, 38, 38, 0.12);
+          color: #DC2626;
+          border: 1px solid rgba(220, 38, 38, 0.25);
+        }
+        .dark .badge-error {
+          background: rgba(248, 113, 113, 0.12);
+          color: #F87171;
+          border: 1px solid rgba(248, 113, 113, 0.2);
+        }
+        .badge-free {
+          background: var(--tab-bg);
+          color: var(--muted);
+          border: 1px solid var(--border);
+        }
+        .danger-zone {
+          background: rgba(220, 38, 38, 0.06);
+          border: 1px solid rgba(220, 38, 38, 0.15);
+        }
+        .dark .danger-zone {
+          background: rgba(248, 113, 113, 0.06);
+          border: 1px solid rgba(248, 113, 113, 0.12);
+        }
+        .danger-title { color: #991B1B; }
+        .dark .danger-title { color: #FCA5A5; }
+        .danger-text { color: #DC2626; }
+        .dark .danger-text { color: #F87171; }
+        .danger-cancel {
+          background: var(--surface);
+          border: 1px solid rgba(220, 38, 38, 0.2);
+          color: #DC2626;
+        }
+        .dark .danger-cancel {
+          background: var(--surface);
+          border: 1px solid rgba(248, 113, 113, 0.2);
+          color: #F87171;
+        }
+      `}</style>
 
       {/* ── Nav ─────────────────────────────────────────────────── */}
       <nav
@@ -115,7 +184,7 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
           <button
             onClick={() => router.push('/dashboard')}
-            className="flex items-center gap-2 text-sm font-medium transition-colors"
+            className="flex items-center gap-2 text-sm font-medium transition-opacity hover:opacity-70"
             style={{ color: 'var(--text)' }}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -130,93 +199,97 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
       <main className="max-w-lg mx-auto px-4 py-6 space-y-5">
 
         {/* ── Profiel hero ───────────────────────────────────────── */}
-        <div
-          className="rounded-2xl p-5 text-center transition-colors"
-          style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
-        >
-          {/* Avatar */}
-          <div
-            className="w-16 h-16 rounded-full mx-auto mb-3 flex items-center justify-center text-xl font-bold text-white"
-            style={{ backgroundColor: '#1A3A2A' }}
-          >
-            {initials}
-          </div>
-
-          {/* Naam (inline edit) */}
-          {editingName ? (
-            <div className="flex items-center gap-2 max-w-xs mx-auto mb-1">
-              <input
-                type="text"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                autoFocus
-                className="flex-1 px-3 py-1.5 text-sm text-center rounded-lg border focus:outline-none focus:ring-2 focus:ring-[#1A3A2A]/20"
-                style={{
-                  backgroundColor: 'var(--bg)',
-                  borderColor: 'var(--border)',
-                  color: 'var(--text)',
-                }}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleSaveName() }}
-              />
-              <button
-                onClick={handleSaveName}
-                disabled={saving}
-                className="px-3 py-1.5 text-xs font-medium text-white rounded-lg"
-                style={{ backgroundColor: '#1A3A2A' }}
-              >
-                {saving ? '...' : '✓'}
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setEditingName(true)}
-              className="text-base font-semibold mb-0.5 hover:opacity-70 transition-opacity"
-              style={{ color: 'var(--text)' }}
+        <Card>
+          <div className="text-center">
+            {/* Avatar */}
+            <div
+              className="w-16 h-16 rounded-full mx-auto mb-3 flex items-center justify-center text-xl font-bold text-white select-none"
+              style={{ backgroundColor: 'var(--brand, #1A3A2A)' }}
             >
-              {user.fullName || 'Naam instellen'}
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline ml-1.5 opacity-40">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-              </svg>
-            </button>
-          )}
+              {initials}
+            </div>
 
-          <p className="text-xs" style={{ color: 'var(--muted)' }}>{user.email}</p>
+            {/* Naam (inline edit) */}
+            {editingName ? (
+              <div className="flex items-center gap-2 max-w-xs mx-auto mb-1">
+                <input
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  autoFocus
+                  maxLength={50}
+                  className="flex-1 px-3 py-1.5 text-sm text-center rounded-lg border focus:outline-none focus:ring-2"
+                  style={{
+                    backgroundColor: 'var(--bg)',
+                    borderColor: 'var(--border)',
+                    color: 'var(--text)',
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveName()
+                    if (e.key === 'Escape') { setEditingName(false); setFullName(user.fullName ?? '') }
+                  }}
+                />
+                <button
+                  onClick={handleSaveName}
+                  disabled={saving || !fullName.trim()}
+                  className="px-3 py-1.5 text-xs font-medium text-white rounded-lg disabled:opacity-50 transition-opacity"
+                  style={{ backgroundColor: 'var(--brand, #1A3A2A)' }}
+                >
+                  {saving ? '...' : '✓'}
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setEditingName(true)}
+                className="text-base font-semibold mb-0.5 hover:opacity-70 transition-opacity"
+                style={{ color: 'var(--text)' }}
+              >
+                {user.fullName || 'Naam instellen'}
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline ml-1.5 opacity-40">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+              </button>
+            )}
 
-          {/* Badge */}
-          <span
-            className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-3"
-            style={{
-              backgroundColor: badge.bg,
-              color: badge.color,
-              border: `1px solid ${badge.border}`,
-            }}
-          >
-            {badge.label}
-          </span>
-        </div>
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>{user.email}</p>
+
+            {/* Badge */}
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-3 ${badge.className}`}>
+              {badge.label}
+            </span>
+          </div>
+        </Card>
 
         {/* ── Abonnement ─────────────────────────────────────────── */}
         <Card>
           <Row
             icon={<CreditCardIcon />}
-            label={subscription.status === 'active' ? 'Fynn Pro' : subscription.status === 'trialing' ? 'Fynn Pro (Trial)' : 'Fynn Free'}
-            sublabel={subscription.status === 'active' ? '€12,99/maand' : subscription.status === 'trialing' ? 'Trial actief' : 'Beperkte functies'}
+            label={
+              subscription.status === 'active' ? 'Fynn Pro'
+              : subscription.status === 'trialing' ? 'Fynn Pro (Trial)'
+              : 'Fynn Free'
+            }
+            sublabel={
+              subscription.status === 'active' ? '€12,99/maand'
+              : subscription.status === 'trialing' ? 'Trial actief'
+              : 'Beperkte functies'
+            }
             action={
               subscription.hasStripe ? (
                 <button
                   onClick={handleManageSubscription}
                   disabled={portalLoading}
-                  className="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors"
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg transition-all disabled:opacity-50"
                   style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--text)', border: '1px solid var(--border)' }}
                 >
                   {portalLoading ? '...' : 'Beheren'}
                 </button>
               ) : (
                 <button
-                  onClick={() => router.push('/dashboard')}
-                  className="px-3 py-1.5 text-xs font-medium text-white rounded-lg"
-                  style={{ backgroundColor: '#1A3A2A' }}
+                  onClick={() => router.push('/pricing')}
+                  className="px-3 py-1.5 text-xs font-medium text-white rounded-lg transition-opacity hover:opacity-90"
+                  style={{ backgroundColor: 'var(--brand, #1A3A2A)' }}
                 >
                   Upgraden
                 </button>
@@ -226,37 +299,36 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
         </Card>
 
         {/* ── Beveiliging ────────────────────────────────────────── */}
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide px-1 mb-2" style={{ color: 'var(--muted)' }}>
-            Beveiliging
-          </p>
+        <Section label="Beveiliging">
           <MFASettings />
-        </div>
+        </Section>
 
         {/* ── Gekoppelde rekeningen ───────────────────────────────── */}
         {accounts.length > 0 && (
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide px-1 mb-2" style={{ color: 'var(--muted)' }}>
-              Gekoppelde rekeningen
-            </p>
+          <Section label="Gekoppelde rekeningen">
             <Card>
               {accounts.map((acc, i) => (
                 <div key={acc.id}>
-                  {i > 0 && <div style={{ borderTop: '1px solid var(--border)', margin: '0 -20px' }} />}
+                  {i > 0 && <Divider />}
                   <div className="flex items-center justify-between py-2">
-                    <div className="flex items-center gap-3">
-                      <span className="text-base">{acc.account_type === 'SAVINGS' ? '💰' : '🏦'}</span>
-                      <div>
-                        <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-base shrink-0">
+                        {acc.account_type === 'SAVINGS' ? '💰' : '🏦'}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>
                           {acc.account_name}
                         </p>
                         <p className="text-xs" style={{ color: 'var(--muted)' }}>
-                          {acc.iban ? `${acc.iban.slice(0, 4)} •••• ${acc.iban.slice(-4)}` : '····'}
+                          {maskIban(acc.iban)}
                         </p>
                       </div>
                     </div>
                     {acc.balance != null && (
-                      <span className="text-sm font-semibold tabular-nums" style={{ color: 'var(--text)' }}>
+                      <span
+                        className="text-sm font-semibold tabular-nums shrink-0 ml-3"
+                        style={{ color: 'var(--text)' }}
+                      >
                         €{Number(acc.balance).toLocaleString('nl-NL', { minimumFractionDigits: 2 })}
                       </span>
                     )}
@@ -264,14 +336,11 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
                 </div>
               ))}
             </Card>
-          </div>
+          </Section>
         )}
 
         {/* ── Voorkeuren ─────────────────────────────────────────── */}
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide px-1 mb-2" style={{ color: 'var(--muted)' }}>
-            Voorkeuren
-          </p>
+        <Section label="Voorkeuren">
           <Card>
             <Row
               icon={<ThemeIcon />}
@@ -280,26 +349,27 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
               action={<ThemeToggle />}
             />
           </Card>
-        </div>
+        </Section>
 
         {/* ── Links ──────────────────────────────────────────────── */}
         <Card>
           <LinkRow href="/privacy" label="Privacybeleid" />
-          <div style={{ borderTop: '1px solid var(--border)', margin: '0 -20px' }} />
+          <Divider />
           <LinkRow href="/terms" label="Algemene voorwaarden" />
         </Card>
 
         {/* ── Uitloggen ──────────────────────────────────────────── */}
         <button
           onClick={handleLogout}
-          className="w-full py-3 text-sm font-medium rounded-2xl transition-colors"
+          disabled={loggingOut}
+          className="w-full py-3 text-sm font-medium rounded-2xl transition-all disabled:opacity-50"
           style={{
             backgroundColor: 'var(--surface)',
             border: '1px solid var(--border)',
             color: '#DC2626',
           }}
         >
-          Uitloggen
+          {loggingOut ? 'Uitloggen...' : 'Uitloggen'}
         </button>
 
         {/* ── Danger zone ────────────────────────────────────────── */}
@@ -307,33 +377,31 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
           {!deleteConfirm ? (
             <button
               onClick={() => setDeleteConfirm(true)}
-              className="w-full text-center text-xs py-2"
+              className="w-full text-center text-xs py-2 transition-opacity hover:opacity-70"
               style={{ color: 'var(--muted)' }}
             >
               Account verwijderen
             </button>
           ) : (
-            <div
-              className="rounded-2xl p-4 space-y-3"
-              style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}
-            >
-              <p className="text-sm font-medium text-red-800">
+            <div className="danger-zone rounded-2xl p-4 space-y-3">
+              <p className="danger-title text-sm font-medium">
                 Weet je het zeker?
               </p>
-              <p className="text-xs text-red-600">
-                Al je data wordt permanent verwijderd — transacties, bankrekeningen, coaching. Dit kan niet ongedaan worden gemaakt.
+              <p className="danger-text text-xs">
+                Al je data wordt permanent verwijderd — transacties, bankrekeningen, coaching.
+                Dit kan niet ongedaan worden gemaakt.
               </p>
               <div className="flex gap-2">
                 <button
                   onClick={() => setDeleteConfirm(false)}
-                  className="flex-1 px-3 py-2 text-xs font-medium rounded-xl bg-white border border-red-200 text-red-700"
+                  className="danger-cancel flex-1 px-3 py-2 text-xs font-medium rounded-xl transition-opacity hover:opacity-80"
                 >
                   Annuleren
                 </button>
                 <button
                   onClick={handleDeleteAccount}
                   disabled={deleting}
-                  className="flex-1 px-3 py-2 text-xs font-medium rounded-xl bg-red-600 text-white disabled:opacity-50"
+                  className="flex-1 px-3 py-2 text-xs font-medium rounded-xl bg-red-600 text-white disabled:opacity-50 transition-opacity hover:opacity-90"
                 >
                   {deleting ? 'Bezig...' : 'Definitief verwijderen'}
                 </button>
@@ -360,6 +428,24 @@ function Card({ children }: { children: React.ReactNode }) {
   )
 }
 
+function Section({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p
+        className="text-xs font-medium uppercase tracking-wide px-1 mb-2"
+        style={{ color: 'var(--muted)' }}
+      >
+        {label}
+      </p>
+      {children}
+    </div>
+  )
+}
+
+function Divider() {
+  return <div style={{ borderTop: '1px solid var(--border)', margin: '0 -20px' }} />
+}
+
 function Row({ icon, label, sublabel, action }: {
   icon: React.ReactNode
   label: string
@@ -367,15 +453,15 @@ function Row({ icon, label, sublabel, action }: {
   action?: React.ReactNode
 }) {
   return (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <span style={{ color: 'var(--muted)' }}>{icon}</span>
-        <div>
-          <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>{label}</p>
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-3 min-w-0">
+        <span className="shrink-0" style={{ color: 'var(--muted)' }}>{icon}</span>
+        <div className="min-w-0">
+          <p className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>{label}</p>
           {sublabel && <p className="text-xs" style={{ color: 'var(--muted)' }}>{sublabel}</p>}
         </div>
       </div>
-      {action}
+      {action && <div className="shrink-0">{action}</div>}
     </div>
   )
 }
@@ -385,6 +471,7 @@ function LinkRow({ href, label }: { href: string; label: string }) {
     <a
       href={href}
       target="_blank"
+      rel="noopener noreferrer"
       className="flex items-center justify-between py-2 transition-opacity hover:opacity-70"
     >
       <span className="text-sm" style={{ color: 'var(--text)' }}>{label}</span>

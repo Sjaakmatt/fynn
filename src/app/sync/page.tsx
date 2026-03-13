@@ -244,7 +244,7 @@ function SyncContent() {
                 height: '100%',
                 backgroundColor: '#4ade80',
                 borderRadius: '99px',
-                width: `${((currentStep) / steps.length) * 100}%`,
+                width: `${((currentStep + 0.5) / steps.length) * 100}%`,
                 transition: 'width 0.6s ease',
                 boxShadow: '0 0 8px rgba(74,222,128,0.6)',
               }} />

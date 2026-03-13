@@ -25,8 +25,9 @@ export async function GET(request: NextRequest) {
       month = today.getMonth()
     }
 
-    const startOfMonth = new Date(year, month, 1).toISOString().split('T')[0]
-    const endOfMonth = new Date(year, month + 1, 0).toISOString().split('T')[0]
+    const startOfMonth = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+    const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    const endOfMonth = `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
     const { data: txs, error } = await supabase
       .from('transactions')
@@ -44,7 +45,8 @@ export async function GET(request: NextRequest) {
     let totalInkomen = 0
 
     for (const tx of txs ?? []) {
-      const amount = Number(tx.amount)
+      const amount = Number(tx.amount ?? 0);
+      if (!Number.isFinite(amount)) continue;
       const cat = tx.category ?? 'overig'
       if (amount < 0) {
         if (!byCategory[cat]) byCategory[cat] = { total: 0, count: 0 }

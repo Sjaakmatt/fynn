@@ -33,9 +33,6 @@ export async function GET(request: NextRequest) {
     query = query.gte("transaction_date", start).lte("transaction_date", end)
   }
 
-  if (category) query = query.eq("category", category);
-  if (cursor) query = query.lt("transaction_date", cursor);
-
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

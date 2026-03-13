@@ -1,3 +1,4 @@
+// src/app/dashboard/page.tsx
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import DashboardShell from '@/components/DashboardShell'
@@ -38,7 +39,6 @@ function runDecisionEngine(
     .filter(i => i.isPast)
     .reduce((s, i) => s + i.amount, 0)
 
-  // Alleen vaste lasten vóór eerste salarisdatum
   const nogTeBetalen = calendarItems
     .filter(i => !i.isPast && i.dayOfMonth < nextSalaryDay)
     .reduce((s, i) => s + i.amount, 0)
@@ -96,7 +96,8 @@ export default async function DashboardPage() {
       .select('amount, category, description, transaction_date')
       .eq('user_id', user.id)
       .gte('transaction_date', startOfMonth)
-      .lte('transaction_date', endOfMonth),
+      .lte('transaction_date', endOfMonth)
+      .limit(3000),
 
     supabase
       .from('briefings')
@@ -130,34 +131,65 @@ export default async function DashboardPage() {
       .toISOString().split('T')[0]
 
     const [{ data: merchantMap }, { data: overrides }, { data: recentTx }] = await Promise.all([
-      supabase.from('merchant_map').select('merchant_key, merchant_name').eq('recurring_hint', true).or('is_variable.is.null,is_variable.eq.false'),
-      supabase.from('merchant_user_overrides').select('merchant_key, is_variable').eq('user_id', user.id),
-      supabase.from('transactions').select('merchant_key, merchant_name, amount, transaction_date').eq('user_id', user.id).lt('amount', 0).gte('transaction_date', threeMonthsAgo),
+      supabase
+        .from('merchant_map')
+        .select('merchant_key, merchant_name')
+        .eq('recurring_hint', true)
+        .or('is_variable.is.null,is_variable.eq.false'),
+      supabase
+        .from('merchant_user_overrides')
+        .select('merchant_key, is_variable')
+        .eq('user_id', user.id),
+      supabase
+        .from('transactions')
+        .select('merchant_key, merchant_name, amount, transaction_date')
+        .eq('user_id', user.id)
+        .lt('amount', 0)
+        .gte('transaction_date', threeMonthsAgo)
+        .limit(3000),
     ])
 
-    const variableKeys = new Set((overrides ?? []).filter(o => o.is_variable).map(o => o.merchant_key))
-    const recurringKeys = new Set((merchantMap ?? []).map(m => m.merchant_key))
+    const variableKeys = new Set(
+      (overrides ?? []).filter(o => o.is_variable).map(o => o.merchant_key)
+    )
+    const recurringMap = new Map(
+      (merchantMap ?? []).map(m => [m.merchant_key, m.merchant_name])
+    )
     const merchantGroups = new Map<string, { amounts: number[]; days: number[]; name: string }>()
 
     for (const tx of recentTx ?? []) {
       if (!tx.merchant_key) continue
       if (variableKeys.has(tx.merchant_key)) continue
-      if (!recurringKeys.has(tx.merchant_key)) continue
+      if (!recurringMap.has(tx.merchant_key)) continue
+
+      const amt = Math.abs(Number(tx.amount ?? 0))
+      if (!Number.isFinite(amt) || amt <= 0) continue
+
       if (!merchantGroups.has(tx.merchant_key)) {
-        const mapEntry = (merchantMap ?? []).find(m => m.merchant_key === tx.merchant_key)
-        merchantGroups.set(tx.merchant_key, { amounts: [], days: [], name: mapEntry?.merchant_name ?? tx.merchant_name ?? tx.merchant_key })
+        merchantGroups.set(tx.merchant_key, {
+          amounts: [],
+          days: [],
+          name: recurringMap.get(tx.merchant_key) ?? tx.merchant_name ?? tx.merchant_key,
+        })
       }
-      merchantGroups.get(tx.merchant_key)!.amounts.push(Math.abs(Number(tx.amount)))
-      merchantGroups.get(tx.merchant_key)!.days.push(new Date(tx.transaction_date).getDate())
+      const g = merchantGroups.get(tx.merchant_key)!
+      g.amounts.push(amt)
+      g.days.push(new Date(tx.transaction_date).getDate())
     }
 
     calendarItems = Array.from(merchantGroups.entries()).map(([key, g]) => {
-      const sorted = [...g.amounts].sort((a, b) => a - b)
-      const amount = sorted[Math.floor(sorted.length / 2)]
-      const sortedDays = [...g.days].sort((a, b) => a - b)
-      const dom = sortedDays[Math.floor(sortedDays.length / 2)]
-      const daysUntil = dom - todayDay
-      return { name: g.name, amount, thisMonthDate: '', dayOfMonth: dom, daysUntil, isPast: daysUntil < 0, merchantKey: key }
+      const amount = median(g.amounts)
+      const dom = median(g.days)
+      const daysUntil = Math.round(dom) - todayDay
+      return {
+        name: g.name,
+        amount,
+        thisMonthDate: '',
+        dayOfMonth: Math.round(dom),
+        daysUntil,
+        isPast: daysUntil < 0,
+        merchantKey: key,
+      }
     })
   } catch (e) {
     console.warn('[Dashboard] Calendar items mislukt:', e)
@@ -172,26 +204,27 @@ export default async function DashboardPage() {
       .eq('income_hint', true)
       .or('is_variable.is.null,is_variable.eq.false')
 
-    const { data: incomeTx } = await supabase
-      .from('transactions')
-      .select('merchant_key, transaction_date')
-      .eq('user_id', user.id)
-      .gt('amount', 0)
-      .gte('transaction_date', new Date(today.getFullYear(), today.getMonth() - 3, 1).toISOString().slice(0, 10))
-      .in('merchant_key', (incomeMap ?? []).map(i => i.merchant_key))
+    const incomeKeys = (incomeMap ?? []).map(i => i.merchant_key)
+    if (incomeKeys.length > 0) {
+      const { data: incomeTx } = await supabase
+        .from('transactions')
+        .select('merchant_key, transaction_date')
+        .eq('user_id', user.id)
+        .gt('amount', 0)
+        .gte('transaction_date', new Date(today.getFullYear(), today.getMonth() - 3, 1).toISOString().slice(0, 10))
+        .in('merchant_key', incomeKeys)
+        .limit(500)
 
-    const incomeGroups = new Map<string, number[]>()
-    for (const tx of incomeTx ?? []) {
-      if (!incomeGroups.has(tx.merchant_key)) incomeGroups.set(tx.merchant_key, [])
-      incomeGroups.get(tx.merchant_key)!.push(new Date(tx.transaction_date).getDate())
+      const incomeGroups = new Map<string, number[]>()
+      for (const tx of incomeTx ?? []) {
+        if (!incomeGroups.has(tx.merchant_key)) incomeGroups.set(tx.merchant_key, [])
+        incomeGroups.get(tx.merchant_key)!.push(new Date(tx.transaction_date).getDate())
+      }
+
+      const incomeDays = Array.from(incomeGroups.values()).map(days => median(days))
+
+      if (incomeDays.length > 0) nextSalaryDay = Math.round(Math.min(...incomeDays))
     }
-
-    const incomeDays = Array.from(incomeGroups.values()).map(days => {
-      const sorted = [...days].sort((a, b) => a - b)
-      return sorted[Math.floor(sorted.length / 2)]
-    })
-
-    if (incomeDays.length > 0) nextSalaryDay = Math.min(...incomeDays)
   } catch (e) {
     console.warn('[Dashboard] Inkomen detectie mislukt:', e)
   }
@@ -200,27 +233,28 @@ export default async function DashboardPage() {
   let variableBudgetReservering = 0
   const variabelPerCategorie: Record<string, { budget: number; gespendeerd: number; resterend: number }> = {}
   try {
-    // Historische data: 6 maanden terug, gesplitst per maand per categorie
     const { data: historicTx } = await supabase
       .from('transactions')
       .select('amount, category, transaction_date')
       .eq('user_id', user.id)
       .lt('amount', 0)
       .gte('transaction_date', sixMonthsAgo)
-      .lt('transaction_date', startOfMonth) // exclusief huidige maand
+      .lt('transaction_date', startOfMonth)
       .in('category', VARIABLE_BUDGET_CATEGORIES)
+      .limit(3000)
 
-    // Groepeer per maand per categorie
     const maandTotalen: Record<string, Record<string, number>> = {}
     for (const tx of historicTx ?? []) {
-      const maand = tx.transaction_date.slice(0, 7) // "2025-10"
+      const amt = Math.abs(Number(tx.amount ?? 0))
+      if (!Number.isFinite(amt) || amt <= 0) continue
+
+      const maand = tx.transaction_date.slice(0, 7)
       const cat = tx.category ?? 'overig'
       if (!maandTotalen[maand]) maandTotalen[maand] = {}
       if (!maandTotalen[maand][cat]) maandTotalen[maand][cat] = 0
-      maandTotalen[maand][cat] += Math.abs(Number(tx.amount))
+      maandTotalen[maand][cat] += amt
     }
 
-    // Mediaan per categorie over beschikbare maanden
     for (const cat of VARIABLE_BUDGET_CATEGORIES) {
       const maandBedragen = Object.values(maandTotalen)
         .map(m => m[cat] ?? 0)
@@ -230,10 +264,12 @@ export default async function DashboardPage() {
 
       const budgetMediaan = Math.round(median(maandBedragen))
 
-      // Al gespendeerd deze maand in deze categorie
       const alGespendeerd = (thisMonthTx ?? [])
-        .filter(tx => tx.category === cat && Number(tx.amount) < 0)
-        .reduce((s, tx) => s + Math.abs(Number(tx.amount)), 0)
+        .filter(tx => tx.category === cat)
+        .reduce((s, tx) => {
+          const amt = Number(tx.amount ?? 0)
+          return Number.isFinite(amt) && amt < 0 ? s + Math.abs(amt) : s
+        }, 0)
 
       const resterend = Math.max(0, budgetMediaan - alGespendeerd)
 
@@ -287,6 +323,7 @@ export default async function DashboardPage() {
         .eq('user_id', user.id)
         .gte('transaction_date', analyseStart)
         .lte('transaction_date', analyseEnd)
+        .limit(3000)
     : { data: thisMonthTx }
 
   // ── Categorie stats ───────────────────────────────────────────────
@@ -295,9 +332,10 @@ export default async function DashboardPage() {
   let totalInkomen = 0
   let totalGespaard = 0
 
-  ;(analyseTx ?? []).forEach(tx => {
+  for (const tx of analyseTx ?? []) {
     const cat = tx.category ?? 'overig'
-    const amount = parseFloat(tx.amount)
+    const amount = Number(tx.amount ?? 0)
+    if (!Number.isFinite(amount)) continue
 
     if (amount < 0) {
       if (!byCategory[cat]) byCategory[cat] = { total: 0, count: 0 }
@@ -308,7 +346,7 @@ export default async function DashboardPage() {
     } else {
       totalInkomen += amount
     }
-  })
+  }
 
   const spaarpct = totalInkomen > 0
     ? ((totalGespaard / totalInkomen) * 100).toFixed(0)

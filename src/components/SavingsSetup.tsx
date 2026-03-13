@@ -73,7 +73,10 @@ export default function SavingsSetup({ onComplete }: Props) {
 
   async function handleSave() {
     setError('')
-    const toSave = accounts.filter(a => a.balance !== '' && parseFloat(a.balance) >= 0)
+    const toSave = accounts.filter(a => {
+      const val = Number(a.balance)
+      return Number.isFinite(val) && val >= 0
+    })
 
     if (toSave.length === 0) {
       // Geen saldo ingevuld — gewoon doorgaan
@@ -89,7 +92,7 @@ export default function SavingsSetup({ onComplete }: Props) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: acc.name,
-            balance: parseFloat(acc.balance),
+            balance: Number(acc.balance),
             iban: acc.iban || null,
           }),
         })
