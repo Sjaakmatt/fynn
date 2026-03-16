@@ -60,39 +60,76 @@ function SyncContent() {
 
   async function runSync() {
     try {
-      // Stap 1: Transacties ophalen
-      setStepStatus('transactions', 'active')
-      setCurrentStep(0)
       const provider = searchParams.get('provider') ?? process.env.NEXT_PUBLIC_BANKING_PROVIDER ?? 'plaid'
 
-      const txRes = provider === 'enablebanking'
-        ? await fetch('/api/enablebanking/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode: 'merge' }),
-          })
-        : await fetch('/api/plaid/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-          })
+      // ── Stap 1: Transacties ophalen ──
+      setStepStatus('transactions', 'active')
+      setCurrentStep(0)
 
-      if (!txRes.ok) throw new Error('Transacties ophalen mislukt')
+      if (provider === 'manual') {
+        // Manual upload: import the file stored in sessionStorage by TransactionUpload
+        const stored = sessionStorage.getItem('fynn_import_file')
+        if (stored) {
+          const { name, type, data, bank } = JSON.parse(stored)
+          // Convert base64 back to File
+          const byteString = atob(data)
+          const ab = new ArrayBuffer(byteString.length)
+          const ia = new Uint8Array(ab)
+          for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i)
+          const file = new File([ab], name, { type: type || 'application/octet-stream' })
+
+          const formData = new FormData()
+          formData.append('file', file)
+          formData.append('mode', 'import')
+          if (bank) formData.append('bank', bank)
+
+          const importRes = await fetch('/api/upload-transactions', {
+            method: 'POST',
+            body: formData,
+          })
+          if (!importRes.ok) {
+            const errData = await importRes.json().catch(() => ({}))
+            throw new Error(errData.error || 'Import mislukt')
+          }
+          sessionStorage.removeItem('fynn_import_file')
+        }
+        // If no stored file, transactions were already imported (e.g. page refresh)
+      } else if (provider === 'enablebanking') {
+        const txRes = await fetch('/api/enablebanking/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'merge' }),
+        })
+        if (!txRes.ok) throw new Error('Transacties ophalen mislukt')
+      } else {
+        const txRes = await fetch('/api/plaid/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        })
+        if (!txRes.ok) throw new Error('Transacties ophalen mislukt')
+      }
       setStepStatus('transactions', 'done')
 
-      // Stap 2: Categoriseren
+      // ── Stap 2: Categoriseren ──
       setStepStatus('categorize', 'active')
       setCurrentStep(1)
-      await fetch('/api/categorize', { method: 'POST' })
+
+      if (provider === 'manual') {
+        // Manual upload: categorisatie is al gedaan in upload-transactions route
+        await new Promise(r => setTimeout(r, 600))
+      } else {
+        await fetch('/api/categorize', { method: 'POST' })
+      }
       setStepStatus('categorize', 'done')
 
-      // Stap 3: Vaste lasten detecteren
+      // ── Stap 3: Vaste lasten detecteren ──
       setStepStatus('recurring', 'active')
       setCurrentStep(2)
       const recRes = await fetch('/api/sync/recurring', { method: 'POST' })
       if (!recRes.ok) throw new Error('Recurring detect mislukt')
       setStepStatus('recurring', 'done')
 
-      // Stap 4: Dashboard klaarzetten
+      // ── Stap 4: Dashboard klaarzetten ──
       setStepStatus('dashboard', 'active')
       setCurrentStep(3)
       await new Promise(r => setTimeout(r, 1200))

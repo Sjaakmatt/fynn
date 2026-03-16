@@ -4,6 +4,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
+// Categories that should never appear in the "Uitgaven per categorie" overview
+const HIDDEN_EXPENSE_CATEGORIES = ['interne_overboeking', 'inkomen', 'toeslagen']
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -25,9 +28,9 @@ export async function GET(request: NextRequest) {
       month = today.getMonth()
     }
 
-    const startOfMonth = `${year}-${String(month + 1).padStart(2, "0")}-01`;
-    const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-    const endOfMonth = `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+    const startOfMonth = `${year}-${String(month + 1).padStart(2, "0")}-01`
+    const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
+    const endOfMonth = `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
 
     const { data: txs, error } = await supabase
       .from('transactions')
@@ -45,10 +48,14 @@ export async function GET(request: NextRequest) {
     let totalInkomen = 0
 
     for (const tx of txs ?? []) {
-      const amount = Number(tx.amount ?? 0);
-      if (!Number.isFinite(amount)) continue;
+      const amount = Number(tx.amount ?? 0)
+      if (!Number.isFinite(amount)) continue
       const cat = tx.category ?? 'overig'
+
       if (amount < 0) {
+        // Skip hidden categories — these are not real expenses
+        if (HIDDEN_EXPENSE_CATEGORIES.includes(cat)) continue
+
         if (!byCategory[cat]) byCategory[cat] = { total: 0, count: 0 }
         byCategory[cat].total += Math.abs(amount)
         byCategory[cat].count += 1

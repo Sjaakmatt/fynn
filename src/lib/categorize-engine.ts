@@ -17,6 +17,8 @@ export type Category =
   | 'entertainment'
   | 'sparen'
   | 'inkomen'
+  | 'toeslagen'
+  | 'interne_overboeking'
   | 'overig'
 
 interface Rule {
@@ -32,20 +34,31 @@ interface Rule {
 // Keywords zijn lowercase en worden pre-genormaliseerd bij module load.
 
 const RULES: Rule[] = [
-  // ── INKOMEN ──────────────────────────────────────────────────────
+  // ── INKOMEN (alleen echt verdiend inkomen) ─────────────────────
   {
     keywords: [
       'salaris', 'loon', 'salary', 'werkgever', 'payroll', 'nettoloon',
+      'salarisrekening',
       'maandloon', 'uitbetaling loon', 'vakantiegeld', 'dertiende maand',
       'tantieme', 'freelance betaling', 'zzp betaling', 'factuur ontvangen',
       'rente-inkomsten', 'rente inkomsten', 'rentevergoeding',
-      'uwv', 'ww uitkering', 'bijstand', 'zorgtoeslag', 'huurtoeslag',
-      'kinderbijslag', 'kindertoeslag', 'aow', 'pensioen uitkering',
-      'belastingteruggave', 'belasting teruggave', 'toeslagen',
-      'dividenduitkering', 'dividend', 'uitkering',
-      'svb', 'sociale verzekeringsbank',
+      'uwv', 'ww uitkering', 'wga',
+      'pensioen uitkering',
+      'dividenduitkering', 'dividend',
     ],
     category: 'inkomen',
+    amountCheck: (a) => a > 0,
+  },
+
+  // ── TOESLAGEN (overheid, apart van inkomen) ──────────────────
+  {
+    keywords: [
+      'zorgtoeslag', 'huurtoeslag', 'kinderbijslag', 'kindertoeslag',
+      'kinderopvangtoeslag', 'toeslagen',
+      'svb', 'sociale verzekeringsbank',
+      'aow', 'bijstand', 'belastingteruggave', 'belasting teruggave',
+    ],
+    category: 'toeslagen',
     amountCheck: (a) => a > 0,
   },
 
@@ -246,7 +259,7 @@ const RULES: Rule[] = [
   },
 ]
 
-// ── INTERNE OVERBOEKING DETECTIE ───────────────────────────────
+// ── KEYWORD-BASED INTERNE OVERBOEKING DETECTIE (fallback) ──────
 
 const INTERNAL_TRANSFER_PATTERNS = [
   'eigen rekening',
@@ -256,6 +269,57 @@ const INTERNAL_TRANSFER_PATTERNS = [
   'tussenrekening',
   'kruisposten',
 ]
+
+// ── IBAN EXTRACTIE (voor IBAN-based transfer detectie) ──────────
+//
+// Patronen uit echte ABN AMRO, ING, Rabobank transacties:
+//   ABN oud:  "SEPA Periodieke overb.  IBAN: NL38ABNA0140722238  BIC: ABNANL2A  Naam: ..."
+//   ABN nieuw: "/TRTP/SEPA OVERBOEKING/IBAN/NL39ABNA0104545003/BIC/ABNANL2A/NAME/..."
+//   ING:       "NL42INGB0001234567 Naam tegenpartij"
+//   Generic:   "IBAN: NL65ABNA0105321699"
+
+const IBAN_PATTERNS = [
+  /\/IBAN\/([A-Z]{2}\d{2}[A-Z]{4}\d{7,20})/i,       // /TRTP/ formaat
+  /IBAN:\s*([A-Z]{2}\d{2}[A-Z]{4}\d{7,20})/i,       // IBAN: formaat
+  /\b(NL\d{2}[A-Z]{4}\d{10})\b/,                     // NL IBAN los in tekst
+  /\b(BE\d{2}\d{12})\b/,                             // BE IBAN los in tekst
+]
+
+/**
+ * Haalt de tegenpartij-IBAN uit een transactiebeschrijving.
+ * Retourneert null als er geen IBAN gevonden wordt.
+ */
+export function extractIbanFromDescription(description: string): string | null {
+  for (const pattern of IBAN_PATTERNS) {
+    const match = description.match(pattern)
+    if (match?.[1]) {
+      return match[1].toUpperCase()
+    }
+  }
+  return null
+}
+
+/**
+ * Checkt of een transactie een interne overboeking is op basis van
+ * IBAN-matching: als de tegenpartij-IBAN voorkomt in userIbans → intern.
+ *
+ * @param description  - Ruwe transactie beschrijving
+ * @param userIbans    - Alle IBANs van deze user (uit bank_accounts tabel)
+ */
+export function isInternalTransfer(
+  description: string,
+  userIbans: string[],
+): boolean {
+  if (userIbans.length === 0) return false
+
+  const counterIban = extractIbanFromDescription(description)
+  if (!counterIban) return false
+
+  const normalizedUserIbans = userIbans.map(iban =>
+    iban.replace(/\s/g, '').toUpperCase()
+  )
+  return normalizedUserIbans.includes(counterIban.replace(/\s/g, '').toUpperCase())
+}
 
 // ── NORMALISATIE ───────────────────────────────────────────────
 
@@ -287,33 +351,42 @@ const NORMALIZED_TRANSFER_PATTERNS = INTERNAL_TRANSFER_PATTERNS.map(p => normali
  *
  * Prioriteit:
  * 1. merchantMapCategory (uit merchant_map.category of merchant_user_overrides)
- * 2. Rule-based matching op description
- * 3. 'overig' als fallback
+ * 2. IBAN-based interne overboeking (als userIbans meegegeven)
+ * 3. Keyword-based interne overboeking (fallback zonder IBANs)
+ * 4. Rule-based matching op description
+ * 5. 'overig' als fallback
  *
- * Als merchantMapCategory is meegegeven, wordt die gebruikt tenzij null/undefined.
- * De rule-engine draait alleen als er geen merchant_map categorie is.
+ * @param description        - Transactie beschrijving
+ * @param amount             - Bedrag (positief = bij, negatief = af)
+ * @param merchantMapCategory - Categorie uit merchant_map of user override (optioneel)
+ * @param userIbans          - Alle IBANs van de user (optioneel, voor IBAN-based detectie)
  */
 export function categorizeTransaction(
   description: string,
   amount: number,
   merchantMapCategory?: string | null,
+  userIbans?: string[],
 ): Category {
   // 1) merchant_map / user override heeft prioriteit
   if (merchantMapCategory && isValidCategory(merchantMapCategory)) {
     return merchantMapCategory as Category
   }
 
+  // 2) IBAN-based interne overboeking (meest betrouwbaar)
+  if (userIbans && userIbans.length > 0 && isInternalTransfer(description, userIbans)) {
+    return 'interne_overboeking'
+  }
+
   const normalized = normalize(description)
 
-  // 2) Check interne overboekingen
+  // 3) Keyword-based interne overboeking (fallback als geen IBANs beschikbaar)
   for (const pattern of NORMALIZED_TRANSFER_PATTERNS) {
     if (normalized.includes(pattern)) {
-      // Interne overboekingen: negatief = sparen, positief = ignore (geen inkomen)
-      return amount < 0 ? 'sparen' : 'overig'
+      return 'interne_overboeking'
     }
   }
 
-  // 3) Rule-based (pre-normalized keywords)
+  // 4) Rule-based (pre-normalized keywords)
   for (const rule of NORMALIZED_RULES) {
     if (rule.amountCheck && !rule.amountCheck(amount)) continue
     for (const kw of rule.normalizedKeywords) {
@@ -328,7 +401,7 @@ export function categorizeTransaction(
 
 /**
  * Batch categorisatie.
- * Accepteert optioneel merchantMapCategory per transactie.
+ * Accepteert optioneel merchantMapCategory per transactie + userIbans.
  */
 export function categorizeTransactions(
   transactions: {
@@ -336,11 +409,12 @@ export function categorizeTransactions(
     description: string
     amount: number
     merchantMapCategory?: string | null
-  }[]
+  }[],
+  userIbans?: string[],
 ): { id: string; category: Category }[] {
   return transactions.map(t => ({
     id: t.id,
-    category: categorizeTransaction(t.description, t.amount, t.merchantMapCategory),
+    category: categorizeTransaction(t.description, t.amount, t.merchantMapCategory, userIbans),
   }))
 }
 
@@ -348,7 +422,7 @@ function isValidCategory(cat: string): boolean {
   const valid: Set<string> = new Set([
     'wonen', 'boodschappen', 'eten & drinken', 'transport',
     'abonnementen', 'kleding', 'gezondheid', 'entertainment',
-    'sparen', 'inkomen', 'overig',
+    'sparen', 'inkomen', 'toeslagen', 'interne_overboeking', 'overig',
   ])
   return valid.has(cat)
 }

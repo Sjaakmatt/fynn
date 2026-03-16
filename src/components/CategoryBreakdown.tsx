@@ -7,14 +7,24 @@ import { useRouter } from 'next/navigation'
 const CATEGORIES = [
   'wonen', 'boodschappen', 'eten & drinken', 'transport',
   'abonnementen', 'kleding', 'gezondheid', 'entertainment',
-  'sparen', 'inkomen', 'overig',
+  'sparen', 'inkomen', 'toeslagen', 'interne_overboeking', 'overig',
 ]
 
 const CATEGORY_ICONS: Record<string, string> = {
   'wonen': '🏠', 'boodschappen': '🛒', 'eten & drinken': '🍽️',
   'transport': '🚆', 'abonnementen': '📱', 'kleding': '👕',
   'gezondheid': '💊', 'entertainment': '🎬', 'sparen': '💰',
-  'inkomen': '💵', 'overig': '📦',
+  'inkomen': '💵', 'toeslagen': '🏛️', 'interne_overboeking': '🔄',
+  'overig': '📦',
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  'wonen': 'Wonen', 'boodschappen': 'Boodschappen',
+  'eten & drinken': 'Eten & Drinken', 'transport': 'Transport',
+  'abonnementen': 'Abonnementen', 'kleding': 'Kleding',
+  'gezondheid': 'Gezondheid', 'entertainment': 'Entertainment',
+  'sparen': 'Sparen', 'inkomen': 'Inkomen', 'toeslagen': 'Toeslagen',
+  'interne_overboeking': 'Interne overboeking', 'overig': 'Overig',
 }
 
 interface Transaction {
@@ -192,6 +202,7 @@ export default function CategoryBreakdown({ sortedCategories: initialCategories,
             const cacheKey = `${selectedMonth}:${cat}`
             const catTransactions = transactions[cacheKey] ?? []
             const isLoading = loadingTx === cat
+            const label = CATEGORY_LABELS[cat] ?? cat
 
             return (
               <div key={cat} style={{ borderBottom: '1px solid var(--border)' }}>
@@ -204,8 +215,8 @@ export default function CategoryBreakdown({ sortedCategories: initialCategories,
                     <div className="flex items-center gap-3">
                       <span className="text-base">{CATEGORY_ICONS[cat] ?? '📦'}</span>
                       <div>
-                        <p className="text-sm capitalize" style={{ color: 'var(--text)' }}>
-                          {cat}
+                        <p className="text-sm" style={{ color: 'var(--text)' }}>
+                          {label}
                         </p>
                         <p className="text-xs" style={{ color: 'var(--muted)' }}>
                           {data.count} transacties
@@ -274,7 +285,7 @@ export default function CategoryBreakdown({ sortedCategories: initialCategories,
                             }}
                           >
                             {CATEGORIES.map(c => (
-                              <option key={c} value={c}>{CATEGORY_ICONS[c]} {c}</option>
+                              <option key={c} value={c}>{CATEGORY_ICONS[c]} {CATEGORY_LABELS[c] ?? c}</option>
                             ))}
                           </select>
                         </div>

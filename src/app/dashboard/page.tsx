@@ -16,6 +16,9 @@ interface CalendarItem {
 
 const VARIABLE_BUDGET_CATEGORIES = ['boodschappen', 'transport']
 
+// Categories that should never appear in the "Uitgaven per categorie" overview
+const HIDDEN_EXPENSE_CATEGORIES = ['interne_overboeking', 'inkomen', 'toeslagen']
+
 function median(values: number[]): number {
   if (values.length === 0) return 0
   const v = [...values].sort((a, b) => a - b)
@@ -35,12 +38,16 @@ function runDecisionEngine(
   reedsBetaald: number
   variabelReservering: number
 } {
-  const reedsBetaald = calendarItems
+  // Only count expenses that fall BEFORE salary day in the current cycle.
+  // Expenses on salary day and after belong to the next salary cycle.
+  const currentCycleItems = calendarItems.filter(i => i.dayOfMonth < nextSalaryDay)
+
+  const reedsBetaald = currentCycleItems
     .filter(i => i.isPast)
     .reduce((s, i) => s + i.amount, 0)
 
-  const nogTeBetalen = calendarItems
-    .filter(i => !i.isPast && i.dayOfMonth < nextSalaryDay)
+  const nogTeBetalen = currentCycleItems
+    .filter(i => !i.isPast)
     .reduce((s, i) => s + i.amount, 0)
 
   const totaalReservering = nogTeBetalen + variableBudgetReservering
@@ -197,7 +204,9 @@ export default async function DashboardPage() {
 
   // ── Inkomen detectie ──────────────────────────────────────────────
   let nextSalaryDay = 25
+  let detectedIncome = false
   try {
+    // Method 1: via merchant_map income_hint (works with Enable Banking / Plaid)
     const { data: incomeMap } = await supabase
       .from('merchant_map')
       .select('merchant_key')
@@ -208,22 +217,76 @@ export default async function DashboardPage() {
     if (incomeKeys.length > 0) {
       const { data: incomeTx } = await supabase
         .from('transactions')
-        .select('merchant_key, transaction_date')
+        .select('merchant_key, amount, transaction_date')
         .eq('user_id', user.id)
         .gt('amount', 0)
         .gte('transaction_date', new Date(today.getFullYear(), today.getMonth() - 3, 1).toISOString().slice(0, 10))
         .in('merchant_key', incomeKeys)
         .limit(500)
 
-      const incomeGroups = new Map<string, number[]>()
+      const incomeGroups = new Map<string, { days: number[]; amounts: number[] }>()
       for (const tx of incomeTx ?? []) {
-        if (!incomeGroups.has(tx.merchant_key)) incomeGroups.set(tx.merchant_key, [])
-        incomeGroups.get(tx.merchant_key)!.push(new Date(tx.transaction_date).getDate())
+        if (!incomeGroups.has(tx.merchant_key)) {
+          incomeGroups.set(tx.merchant_key, { days: [], amounts: [] })
+        }
+        const g = incomeGroups.get(tx.merchant_key)!
+        g.days.push(new Date(tx.transaction_date).getDate())
+        g.amounts.push(Number(tx.amount))
       }
 
-      const incomeDays = Array.from(incomeGroups.values()).map(days => median(days))
+      if (incomeGroups.size > 0) {
+        // Find the primary income source = highest median amount
+        let primaryDay = 25
+        let highestMedianAmount = 0
 
-      if (incomeDays.length > 0) nextSalaryDay = Math.round(Math.min(...incomeDays))
+        for (const g of incomeGroups.values()) {
+          const medianAmount = median(g.amounts)
+          if (medianAmount > highestMedianAmount) {
+            highestMedianAmount = medianAmount
+            // Use max day — salary is always on a fixed day (e.g. 25th),
+            // but paid earlier when that day falls on a weekend.
+            // The highest observed day is the real salary day.
+            primaryDay = Math.max(...g.days)
+          }
+        }
+
+        nextSalaryDay = primaryDay
+        detectedIncome = true
+      }
+    }
+
+    // Method 2: fallback via category='inkomen' (works with manual upload where merchant_key may be null)
+    if (!detectedIncome) {
+      const { data: incomeTx } = await supabase
+        .from('transactions')
+        .select('amount, transaction_date')
+        .eq('user_id', user.id)
+        .eq('category', 'inkomen')
+        .gt('amount', 500) // Only substantial income (skip dividends, small refunds)
+        .gte('transaction_date', new Date(today.getFullYear(), today.getMonth() - 3, 1).toISOString().slice(0, 10))
+        .order('amount', { ascending: false })
+        .limit(200)
+
+      if (incomeTx && incomeTx.length > 0) {
+        // Group by approximate amount to find the main salary pattern
+        // The largest recurring amount is most likely the salary
+        const amountGroups = new Map<number, number[]>()
+        for (const tx of incomeTx) {
+          const amt = Math.round(Number(tx.amount) / 100) * 100 // Round to nearest 100
+          if (!amountGroups.has(amt)) amountGroups.set(amt, [])
+          amountGroups.get(amt)!.push(new Date(tx.transaction_date).getDate())
+        }
+
+        // Find the group with the most transactions (likely salary)
+        let bestGroup: number[] = []
+        for (const days of amountGroups.values()) {
+          if (days.length > bestGroup.length) bestGroup = days
+        }
+
+        if (bestGroup.length >= 2) {
+          nextSalaryDay = Math.round(median(bestGroup))
+        }
+      }
     }
   } catch (e) {
     console.warn('[Dashboard] Inkomen detectie mislukt:', e)
@@ -338,6 +401,9 @@ export default async function DashboardPage() {
     if (!Number.isFinite(amount)) continue
 
     if (amount < 0) {
+      // Skip hidden categories — these are not real expenses
+      if (HIDDEN_EXPENSE_CATEGORIES.includes(cat)) continue
+
       if (!byCategory[cat]) byCategory[cat] = { total: 0, count: 0 }
       byCategory[cat].total += Math.abs(amount)
       byCategory[cat].count += 1

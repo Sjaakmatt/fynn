@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import ThemeToggle from './ThemeToggle'
 import MFASettings from './mfa/Mfasettings'
+import TransactionUpload from './TransactionUpload'
+import BankConnectModal from './BankConnectModal'
 
 interface Props {
   user: {
@@ -39,6 +41,8 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
+  const [showBankModal, setShowBankModal] = useState(false)
+  const [showUpload, setShowUpload] = useState(false)
 
   const initials = (user.fullName ?? user.email)
     .split(/[\s@]/)
@@ -249,10 +253,14 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
         </Section>
 
         {/* ── Gekoppelde rekeningen ───────────────────────────────── */}
-        {accounts.length > 0 && (
-          <Section label="Gekoppelde rekeningen">
-            <Card>
-              {accounts.map((acc, i) => (
+        <Section label="Gekoppelde rekeningen">
+          <Card>
+            {accounts.length === 0 ? (
+              <p className="text-sm text-center py-2" style={{ color: 'var(--muted)' }}>
+                Nog geen rekeningen gekoppeld
+              </p>
+            ) : (
+              accounts.map((acc, i) => (
                 <div key={acc.id}>
                   {i > 0 && <Divider />}
                   <div className="flex items-center justify-between py-2">
@@ -279,10 +287,68 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
                     )}
                   </div>
                 </div>
-              ))}
-            </Card>
-          </Section>
-        )}
+              ))
+            )}
+
+            {/* Add account button */}
+            <div className="pt-3 mt-2" style={{ borderTop: '1px solid var(--border)' }}>
+              <button
+                onClick={() => setShowBankModal(true)}
+                className="w-full py-2.5 rounded-xl text-xs font-medium transition-all hover:opacity-80"
+                style={{
+                  backgroundColor: 'var(--tab-bg)',
+                  color: 'var(--text)',
+                  border: '1px solid var(--border)',
+                }}>
+                + Rekening toevoegen
+              </button>
+            </div>
+          </Card>
+        </Section>
+
+        {/* ── Transacties uploaden ────────────────────────────────── */}
+        <Section label="Transacties uploaden">
+          <Card>
+            <button
+              onClick={() => setShowUpload(!showUpload)}
+              className="w-full flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-base shrink-0">📄</span>
+                <div className="text-left">
+                  <p className="text-sm" style={{ color: 'var(--text)' }}>
+                    CSV-bestand uploaden
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                    Importeer transacties vanuit je bankexport
+                  </p>
+                </div>
+              </div>
+              <svg
+                width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                className="shrink-0 transition-transform"
+                style={{
+                  color: 'var(--muted)',
+                  transform: showUpload ? 'rotate(180deg)' : 'none',
+                }}
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+
+            {showUpload && (
+              <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--border)' }}>
+                <TransactionUpload
+                  onComplete={() => {
+                    setShowUpload(false)
+                    router.refresh()
+                  }}
+                />
+              </div>
+            )}
+          </Card>
+        </Section>
 
         {/* ── Voorkeuren ─────────────────────────────────────────── */}
         <Section label="Voorkeuren">
@@ -364,6 +430,11 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
         </div>
 
       </main>
+
+      {/* ── Modals ───────────────────────────────────────────────── */}
+      {showBankModal && (
+        <BankConnectModal onClose={() => { setShowBankModal(false); router.refresh() }} />
+      )}
     </div>
   )
 }

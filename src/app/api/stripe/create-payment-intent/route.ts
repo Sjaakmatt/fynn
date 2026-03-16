@@ -23,7 +23,7 @@ export async function POST(_request: NextRequest) {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("stripe_customer_id, full_name, subscription_status")
+      .select("stripe_customer_id, full_name, subscription_status, is_beta")
       .eq("id", user.id)
       .single();
 
@@ -50,19 +50,27 @@ export async function POST(_request: NextRequest) {
         .eq("id", user.id);
     }
 
+    // Beta users: andere prijs + langere trial
+    const isBeta = profile?.is_beta === true;
+    const priceId = isBeta
+      ? process.env.STRIPE_PRICE_ID_BETA!
+      : process.env.STRIPE_PRICE_ID!;
+    const trialDays = isBeta ? 90 : 14;
+
     // Maak subscription aan met trial
     const subscription = await stripe.subscriptions.create({
       customer: customerId,
-      items: [{ price: process.env.STRIPE_PRICE_ID! }],
+      items: [{ price: priceId }],
       payment_behavior: "default_incomplete",
       payment_settings: {
         payment_method_types: ["card", "sepa_debit"],
         save_default_payment_method: "on_subscription",
       },
-      trial_period_days: 14,
+      trial_period_days: trialDays,
       expand: ["latest_invoice.payment_intent", "pending_setup_intent"],
       metadata: {
         supabase_user_id: user.id,
+        is_beta: isBeta ? "true" : "false",
       },
     });
 
@@ -94,8 +102,6 @@ export async function POST(_request: NextRequest) {
     }
 
     // Fallback: handmatig SetupIntent aanmaken
-    // NB: deze wordt niet automatisch aan de subscription gekoppeld —
-    // de webhook moet de default payment method koppelen bij setup_intent.succeeded
     const setupIntent = await stripe.setupIntents.create({
       customer: customerId,
       payment_method_types: ["card"],

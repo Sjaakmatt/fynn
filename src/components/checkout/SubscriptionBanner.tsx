@@ -1,3 +1,4 @@
+// src/components/checkout/SubscriptionBanner.tsx
 'use client'
 
 import { useState } from 'react'
@@ -6,9 +7,10 @@ import CheckoutModal from './CheckoutModal'
 interface Props {
   status: string | null
   trialEndsAt: string | null
+  isBeta: boolean
 }
 
-export default function SubscriptionBanner({ status, trialEndsAt }: Props) {
+export default function SubscriptionBanner({ status, trialEndsAt, isBeta }: Props) {
   const [modalOpen, setModalOpen] = useState(false)
   const [loading, setLoading] = useState(false)
 
@@ -33,10 +35,12 @@ export default function SubscriptionBanner({ status, trialEndsAt }: Props) {
         style={{ backgroundColor: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)' }}>
         <div>
           <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
-            ✨ Gratis trial — nog {daysLeft} dag{daysLeft !== 1 ? 'en' : ''}
+            {isBeta ? '🧪' : '✨'} Gratis trial — nog {daysLeft} dag{daysLeft !== 1 ? 'en' : ''}
           </p>
           <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
-            Daarna €12,99/maand. Altijd opzegbaar.
+            {isBeta
+              ? 'Daarna €4,99/maand — voor altijd. Altijd opzegbaar.'
+              : 'Daarna €12,99/maand. Altijd opzegbaar.'}
           </p>
         </div>
         <button
@@ -83,10 +87,14 @@ export default function SubscriptionBanner({ status, trialEndsAt }: Props) {
         style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
         <div>
           <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
-            Fynn Pro — €12,99/maand
+            {isBeta
+              ? 'Fynn Bèta — €4,99/maand'
+              : 'Fynn Pro — €12,99/maand'}
           </p>
           <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
-            14 dagen gratis proberen. Geen creditcard nodig.
+            {isBeta
+              ? '3 maanden gratis. Daarna €4,99 — voor altijd.'
+              : '14 dagen gratis proberen. Geen creditcard nodig.'}
           </p>
         </div>
         <button
@@ -94,7 +102,7 @@ export default function SubscriptionBanner({ status, trialEndsAt }: Props) {
           className="text-xs px-4 py-2 rounded-lg font-medium text-white"
           style={{ backgroundColor: 'var(--brand)' }}
         >
-          Start gratis →
+          {isBeta ? 'Activeer bèta →' : 'Start gratis →'}
         </button>
       </div>
 

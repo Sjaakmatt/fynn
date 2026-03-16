@@ -77,6 +77,38 @@ const KNOWN_NAMES: [string, string][] = [
   ["crossfit", "CrossFit"],
 ];
 
+// ── SPECIAL DESCRIPTION PATTERNS ───────────────────────────────
+// Detected BEFORE normal name extraction. These override everything
+// because the description keyword is a stronger identity signal than
+// the counterparty name (e.g. "ABN AMRO BANK" can be salary, mortgage, or fees).
+
+interface SpecialPattern {
+  test: (description: string) => boolean;
+  merchantName: string;
+  merchantKey: string;
+}
+
+const SPECIAL_PATTERNS: SpecialPattern[] = [
+  // Salary: "Salarisrekening" or "Salaris" in REMI/Omschrijving field
+  {
+    test: (d) => /\bsalarisrekening\b/i.test(d) || /\bomschrijving:\s*salaris\b/i.test(d),
+    merchantName: "Salaris",
+    merchantKey: "nl:salaris",
+  },
+  // Dividend: "dividend" keyword — extract fund manager, not full description
+  {
+    test: (d) => /\bdividend\b/i.test(d),
+    merchantName: "Dividend",
+    merchantKey: "nl:dividend",
+  },
+  // Rente: interest payments
+  {
+    test: (d) => /\brente\b/i.test(d) && /\b(spaar|deposito|rekening)\b/i.test(d),
+    merchantName: "Rente",
+    merchantKey: "nl:rente",
+  },
+];
+
 // -------------------------------
 // Public API
 // -------------------------------
@@ -87,6 +119,18 @@ export function extractMerchant(raw: string, amount?: number): MerchantExtract {
 
   const channel = detectChannel(d);
   const processor = detectProcessor(d);
+
+  // 0) Check special patterns FIRST — these override normal extraction
+  for (const pattern of SPECIAL_PATTERNS) {
+    if (pattern.test(d)) {
+      return {
+        merchantName: pattern.merchantName,
+        merchantKey: pattern.merchantKey,
+        processor,
+        channel,
+      };
+    }
+  }
 
   // 1) Extract a best-effort "name candidate"
   const nameCandidate = extractNameCandidate(d);
@@ -150,10 +194,6 @@ function extractNameCandidate(d: string): string {
   if (ecomMatch) return ecomMatch[1].trim();
 
   // ── 5. Common PSP patterns (Mollie/Adyen/Stripe/PayPal) — try to grab merchant-ish part
-  // Examples vary a lot; we keep it conservative:
-  // "MOLLIE *BOL.COM" -> "BOL.COM"
-  // "ADYEN *UBER" -> "UBER"
-  // "STRIPE *NETFLIX" -> "NETFLIX"
   const pspMatch = d.match(/\b(?:mollie|adyen|stripe|paypal)\b[^a-z0-9]*([a-z0-9 .\-&_/]{3,})/i);
   if (pspMatch) return pspMatch[1].trim();
 
@@ -169,6 +209,8 @@ function cleanDisplayName(name: string, amount?: number): string {
 
   // Ambiguous merchant split — use absolute amount for comparison
   // since transaction amounts can be negative (expenses) or positive (income)
+  // NOTE: salary is already handled by SPECIAL_PATTERNS, so this only applies
+  // to non-salary ABN AMRO transactions (hypotheek, bankkosten, etc.)
   if (base === "ABN AMRO" && typeof amount === "number" && Number.isFinite(amount)) {
     const abs = Math.abs(amount);
     if (abs > 500) return "Hypotheek";
@@ -234,9 +276,6 @@ function normalizeMerchantToken(input: string): string {
 }
 
 function applyKnownAliases(base: string): string {
-  // Unify key variants to a canonical token (identity-level)
-  // ⚠️  Patterns must be specific enough to avoid false positives.
-  //     E.g. \bah\b would match "ah" in "mahdi" — don't use it.
   const aliases: Array<[RegExp, string]> = [
     [/\bbol\.com\b/g, "bol"],
     [/\balbert heijn\b/g, "albert heijn"],
@@ -266,7 +305,6 @@ function applyKnownAliases(base: string): string {
 }
 
 function stripNonIdentityNoise(s: string): string {
-  // Remove payment/channel words that appear in many descriptions
   const NOISE = [
     "sepa",
     "incasso",

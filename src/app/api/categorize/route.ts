@@ -12,27 +12,6 @@ type TxRow = {
   merchant_name: string | null;
 };
 
-/** Interne transfers tussen eigen rekeningen */
-function isInterneTransfer(description: string): boolean {
-  const d = description.toLowerCase();
-  const keywords = [
-    "spaarre",
-    "spaarrekening",
-    "direct sparen",
-    "eigen rekening",
-    "salarisrekening",
-    "jongerengroeirekening",
-    "beleggingsrekening",
-    "oranje spaarrekening",
-    "internetsparen",
-    "flexibel sparen",
-  ];
-  if (keywords.some((k) => d.includes(k))) return true;
-  if (d.includes("periodieke overb") || d.includes("periodieke overboeking"))
-    return true;
-  return false;
-}
-
 const PAGE_SIZE = 1000;
 const UPSERT_BATCH = 500;
 
@@ -56,7 +35,18 @@ export async function POST(_request: NextRequest) {
     const overrideMap = new Map<string, string>();
     for (const o of overrides ?? []) overrideMap.set(o.merchant_key, o.category);
 
-    // ── 2) Haal transacties op — gepagineerd ────────────────────
+    // ── 2) Haal user IBANs op voor interne overboeking detectie ─
+    const { data: userAccounts } = await supabase
+      .from("bank_accounts")
+      .select("iban")
+      .eq("user_id", user.id)
+      .not("iban", "is", null);
+
+    const userIbans: string[] = (userAccounts ?? [])
+      .map((a) => a.iban)
+      .filter((iban): iban is string => iban !== null && iban !== "");
+
+    // ── 3) Haal transacties op — gepagineerd ────────────────────
     let allTxs: TxRow[] = [];
     let from = 0;
 
@@ -82,7 +72,7 @@ export async function POST(_request: NextRequest) {
       });
     }
 
-    // ── 3) Bulk fetch merchant_map categories (1 query) ─────────
+    // ── 4) Bulk fetch merchant_map categories (1 query) ─────────
     const keys = Array.from(
       new Set(
         allTxs
@@ -109,7 +99,7 @@ export async function POST(_request: NextRequest) {
       }
     }
 
-    // ── 4) Categorize + backfill merchant fields ────────────────
+    // ── 5) Categorize + backfill merchant fields ────────────────
     const updates: Array<{
       id: string;
       category: string;
@@ -131,18 +121,18 @@ export async function POST(_request: NextRequest) {
         merchantName = ex.merchantName;
       }
 
-      // Prioriteit: interne transfer → user override → merchant_map → rule engine
+      // Prioriteit: user override → merchant_map → IBAN-aware engine (incl. keyword fallback)
       let category: string;
-      if (isInterneTransfer(tx.description ?? "")) {
-        category = "sparen";
-      } else if (merchantKey && overrideMap.has(merchantKey)) {
+      if (merchantKey && overrideMap.has(merchantKey)) {
         category = overrideMap.get(merchantKey)!;
-      } else if (merchantKey && merchantMapCategory.has(merchantKey)) {
-        category = merchantMapCategory.get(merchantKey)!;
       } else {
+        const mmCat = merchantKey ? merchantMapCategory.get(merchantKey) ?? null : null;
+        // categorizeTransaction checkt: merchantMapCat → IBAN match → keywords → rules → overig
         category = categorizeTransaction(
-          merchantName ?? tx.description ?? "",
-          safeAmt
+          tx.description ?? "",
+          safeAmt,
+          mmCat,
+          userIbans,
         );
       }
 
@@ -154,7 +144,7 @@ export async function POST(_request: NextRequest) {
       });
     }
 
-    // ── 5) Batched upsert ───────────────────────────────────────
+    // ── 6) Batched upsert ───────────────────────────────────────
     for (let i = 0; i < updates.length; i += UPSERT_BATCH) {
       const batch = updates.slice(i, i + UPSERT_BATCH);
       const { error: upErr } = await supabase

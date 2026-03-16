@@ -2,11 +2,11 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useState, Suspense } from 'react'
 import ThemeToggle from '@/components/ThemeToggle'
 
-export default function SignupPage() {
+function SignupForm() {
   const [voornaam, setVoornaam] = useState('')
   const [achternaam, setAchternaam] = useState('')
   const [email, setEmail] = useState('')
@@ -17,7 +17,10 @@ export default function SignupPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
+
+  const isBeta = searchParams.get('ref') === 'beta'
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault()
@@ -44,6 +47,7 @@ export default function SignupPage() {
         data: {
           full_name: `${voornaam} ${achternaam}`.trim(),
           marketing_opt_in: marketing,
+          is_beta: isBeta,
         },
       },
     })
@@ -78,18 +82,29 @@ export default function SignupPage() {
         </div>
         <div>
           <p className="text-2xl font-semibold leading-snug mb-4">
-            Grip op je geld begint met inzicht.
+            {isBeta
+              ? 'Welkom bij de Fynn bèta.'
+              : 'Grip op je geld begint met inzicht.'}
           </p>
           <p className="text-sm opacity-60">
-            Fynn analyseert je bankrekening en vertelt je precies wat je moet doen.
+            {isBeta
+              ? '3 maanden gratis. Daarna €4,99/maand — voor altijd.'
+              : 'Fynn analyseert je bankrekening en vertelt je precies wat je moet doen.'}
           </p>
         </div>
         <div className="space-y-3">
-          {[
-            '14 dagen gratis proberen',
-            'Geen creditcard nodig',
-            'Koppel je bank in 3 minuten',
-          ].map(item => (
+          {(isBeta
+            ? [
+                '3 maanden gratis testen',
+                'Daarna €4,99/maand — voor altijd',
+                'Directe lijn met de founder',
+              ]
+            : [
+                '14 dagen gratis proberen',
+                'Geen creditcard nodig',
+                'Koppel je bank in 3 minuten',
+              ]
+          ).map(item => (
             <div key={item} className="flex items-center gap-2">
               <div
                 className="w-4 h-4 rounded-full flex items-center justify-center"
@@ -125,11 +140,29 @@ export default function SignupPage() {
             <span className="font-semibold" style={{ color: 'var(--text)' }}>Fynn</span>
           </div>
 
+          {/* Beta badge */}
+          {isBeta && (
+            <div
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-4"
+              style={{
+                backgroundColor: 'rgba(245,158,11,0.08)',
+                border: '1px solid rgba(245,158,11,0.2)',
+              }}
+            >
+              <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#F59E0B' }} />
+              <span className="text-xs font-semibold" style={{ color: '#F59E0B' }}>
+                Bèta toegang
+              </span>
+            </div>
+          )}
+
           <h1 className="text-lg font-semibold mb-1" style={{ color: 'var(--text)' }}>
-            Start gratis
+            {isBeta ? 'Claim je bèta plek' : 'Start gratis'}
           </h1>
           <p className="text-xs mb-8" style={{ color: 'var(--muted)' }}>
-            14 dagen gratis. Daarna €12,99/maand. Altijd opzegbaar.
+            {isBeta
+              ? '3 maanden gratis. Daarna €4,99/maand — voor altijd.'
+              : '14 dagen gratis. Daarna €12,99/maand. Altijd opzegbaar.'}
           </p>
 
           <form onSubmit={handleSignup} className="space-y-3">
@@ -239,7 +272,11 @@ export default function SignupPage() {
               className="w-full rounded-xl py-3.5 text-sm font-semibold text-white disabled:opacity-30 transition-opacity"
               style={{ backgroundColor: 'var(--brand)' }}
             >
-              {loading ? 'Account aanmaken…' : 'Gratis starten'}
+              {loading
+                ? 'Account aanmaken…'
+                : isBeta
+                  ? 'Bèta plek claimen'
+                  : 'Gratis starten'}
             </button>
           </form>
 
@@ -252,5 +289,13 @@ export default function SignupPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense>
+      <SignupForm />
+    </Suspense>
   )
 }

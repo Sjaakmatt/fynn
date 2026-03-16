@@ -10,6 +10,7 @@ import {
   useElements,
 } from '@stripe/react-stripe-js'
 import { loadStripe } from '@stripe/stripe-js'
+import { createClient } from '@/lib/supabase/client'
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
 
@@ -37,9 +38,27 @@ export default function CheckoutModal({ isOpen, onClose }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [subscriptionId, setSubscriptionId] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
+  const [isBeta, setIsBeta] = useState(false)
   const isDark = useIsDark()
 
   useEffect(() => { setMounted(true) }, [])
+
+  // Fetch beta status
+  useEffect(() => {
+    if (!isOpen) return
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return
+      supabase
+        .from('profiles')
+        .select('is_beta')
+        .eq('id', user.id)
+        .single()
+        .then(({ data }) => {
+          if (data?.is_beta) setIsBeta(true)
+        })
+    })
+  }, [isOpen])
 
   // Scroll lock
   useEffect(() => {
@@ -85,7 +104,6 @@ export default function CheckoutModal({ isOpen, onClose }: Props) {
 
   if (!isOpen || !mounted) return null
 
-  // Stripe Elements verwacht hex kleuren, geen CSS variables
   const stripeAppearance = {
     theme: 'flat' as const,
     variables: {
@@ -144,13 +162,15 @@ export default function CheckoutModal({ isOpen, onClose }: Props) {
         <div className="px-6 pt-5 pb-4 flex items-start justify-between">
           <div>
             <p className="text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--muted)' }}>
-              Upgrade
+              {isBeta ? 'Bèta' : 'Upgrade'}
             </p>
             <p className="text-lg font-semibold mt-1" style={{ color: 'var(--text)' }}>
-              Start Fynn Pro
+              {isBeta ? 'Activeer je bèta plek' : 'Start Fynn Pro'}
             </p>
             <p className="text-xs mt-1" style={{ color: 'var(--brand)' }}>
-              14 dagen gratis · daarna €12,99/maand
+              {isBeta
+                ? '3 maanden gratis · daarna €4,99/maand — voor altijd'
+                : '14 dagen gratis · daarna €12,99/maand'}
             </p>
           </div>
           <button onClick={onClose} className="mt-1 text-lg leading-none" style={{ color: 'var(--muted)' }}>
@@ -161,6 +181,22 @@ export default function CheckoutModal({ isOpen, onClose }: Props) {
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 pb-6">
           <div className="space-y-5">
+
+            {/* Beta badge */}
+            {isBeta && (
+              <div
+                className="flex items-center gap-2 px-3 py-2 rounded-xl"
+                style={{
+                  backgroundColor: 'rgba(245,158,11,0.08)',
+                  border: '1px solid rgba(245,158,11,0.2)',
+                }}
+              >
+                <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: '#F59E0B' }} />
+                <p className="text-xs" style={{ color: '#F59E0B' }}>
+                  Bèta deal — na de gratis periode betaal je voor altijd €4,99/maand i.p.v. €12,99
+                </p>
+              </div>
+            )}
 
             {/* Wat je krijgt */}
             <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--tab-bg)' }}>
@@ -209,6 +245,7 @@ export default function CheckoutModal({ isOpen, onClose }: Props) {
                 <PaymentForm
                   intentType={intentType}
                   subscriptionId={subscriptionId}
+                  isBeta={isBeta}
                   onSuccess={onClose}
                 />
               </Elements>
@@ -229,10 +266,12 @@ export default function CheckoutModal({ isOpen, onClose }: Props) {
 function PaymentForm({
   intentType,
   subscriptionId,
+  isBeta,
   onSuccess,
 }: {
   intentType: 'payment_intent' | 'setup_intent'
   subscriptionId: string | null
+  isBeta: boolean
   onSuccess: () => void
 }) {
   const stripe = useStripe()
@@ -268,7 +307,6 @@ function PaymentForm({
       return
     }
 
-    // Direct status updaten — niet wachten op webhook
     if (subscriptionId) {
       await fetch('/api/stripe/confirm', {
         method: 'POST',
@@ -294,10 +332,12 @@ function PaymentForm({
           <span className="text-xl" style={{ color: 'var(--brand)' }}>✓</span>
         </div>
         <p className="text-base font-semibold mb-1" style={{ color: 'var(--text)' }}>
-          Welkom bij Fynn Pro!
+          {isBeta ? 'Welkom bij de Fynn bèta!' : 'Welkom bij Fynn Pro!'}
         </p>
         <p className="text-sm" style={{ color: 'var(--muted)' }}>
-          Je trial is gestart. Je wordt doorgestuurd...
+          {isBeta
+            ? 'Je 3 maanden gratis trial is gestart. Je wordt doorgestuurd...'
+            : 'Je trial is gestart. Je wordt doorgestuurd...'}
         </p>
       </div>
     )
@@ -326,7 +366,11 @@ function PaymentForm({
         className="w-full py-3.5 rounded-xl text-sm font-semibold transition-opacity disabled:opacity-30"
         style={{ backgroundColor: 'var(--brand)', color: 'white' }}
       >
-        {submitting ? 'Verwerken...' : 'Start 14 dagen gratis →'}
+        {submitting
+          ? 'Verwerken...'
+          : isBeta
+            ? 'Start 3 maanden gratis →'
+            : 'Start 14 dagen gratis →'}
       </button>
     </div>
   )

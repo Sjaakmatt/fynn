@@ -711,29 +711,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ═══════════════ SOCIAL PROOF ═══════════════ */}
-      <section style={{ padding: '80px 24px', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', marginTop: 60 }}>
-        <div style={{ maxWidth: 680, margin: '0 auto' }}>
-          <Reveal>
-            <div>
-              <svg width="32" height="24" viewBox="0 0 32 24" fill="none" style={{ marginBottom: 24, opacity: 0.12 }}>
-                <path d="M0 24V14.4C0 6.4 5.6 1.6 14 0l1.4 3.2C10 5.2 7.6 9.2 7.2 14H14v10H0zm18 0V14.4C18 6.4 23.6 1.6 32 0l1.4 3.2C28 5.2 25.6 9.2 25.2 14H32v10H18z" fill="var(--text)" />
-              </svg>
-              <p style={{ fontSize: 'clamp(18px, 2.5vw, 26px)', fontWeight: 600, lineHeight: 1.5, letterSpacing: '-0.5px', marginBottom: 28 }}>
-                Ik had altijd het gevoel dat er te weinig overbleef. Maar ik wist niet waarom. Fynn liet me binnen een week zien dat ik €89 per maand kwijt was aan abonnementen waarvan ik er drie niet eens gebruikte.
-              </p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 40, height: 40, borderRadius: '50%', backgroundColor: 'color-mix(in srgb, var(--brand) 10%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, color: 'var(--brand)' }}>M</div>
-                <div>
-                  <p style={{ fontWeight: 600, fontSize: 14 }}>Marieke, 31</p>
-                  <p style={{ color: 'var(--muted)', fontSize: 13 }}>Amsterdam · Beta gebruiker</p>
-                </div>
-              </div>
-            </div>
-          </Reveal>
-        </div>
-      </section>
-
       {/* ═══════════════ PRICING ═══════════════ */}
       <section style={{ padding: '100px 24px' }}>
         <div style={{ maxWidth: 480, margin: '0 auto' }}>

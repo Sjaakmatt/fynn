@@ -188,23 +188,23 @@ export async function projectCashflow(
       ).data ?? []
     : []
 
+  // Filter to current salary cycle: only items BEFORE salary day
+  // Expenses on salary day and after belong to the next cycle
+  const currentCycleItems = recurringItems.filter(r => r.dayOfMonth < salaryDate)
+  const currentCycleKeys = new Set(currentCycleItems.map(r => r.merchant_key))
+
   const alreadyPaid = paidTx
+    .filter(tx => currentCycleKeys.has(tx.merchant_key))
     .reduce((s, tx) => s + Math.abs(Number(tx.amount)), 0)
 
   const paidKeys = new Set(paidTx.map(tx => tx.merchant_key))
 
-  // 5) Nog te betalen vóór salarisdatum
-  //    Items die nog niet betaald zijn EN waarvan de verwachte dag
-  //    vóór de salarisdatum valt (of vóór einde maand als salaris al geweest is)
-  const effectiveDeadline = salaryDate >= currentDay
-    ? salaryDate
-    : 32 // einde maand — alle resterende items tellen mee
-
-  const stillToPay = recurringItems
-    .filter(r => !paidKeys.has(r.merchant_key) && r.dayOfMonth <= effectiveDeadline)
+  // 5) Nog te betalen vóór salarisdatum (only current cycle items)
+  const stillToPay = currentCycleItems
+    .filter(r => !paidKeys.has(r.merchant_key))
     .reduce((s, r) => s + r.amount, 0)
 
-  const totalFixed = recurringItems.reduce((s, r) => s + r.amount, 0)
+  const totalFixed = currentCycleItems.reduce((s, r) => s + r.amount, 0)
 
   // 6) Dagen tot salaris
   const daysUntilSalary = calculateDaysUntil(today, salaryDate)
@@ -284,13 +284,25 @@ async function detectIncome(
     g.days.push(new Date(tx.transaction_date).getDate())
   }
 
+  // Primary income = highest median amount (salary, not UWV/SVB)
+  let salaryDate = 25
+  let highestMedianAmount = 0
+
   const incomeSources = Array.from(incomeGroups.values()).map(g => ({
     amount: median(g.amounts),
-    day: median(g.days),
+    // Use max day — salary is always on a fixed day (e.g. 25th),
+    // but paid earlier when that day falls on a weekend.
+    // The highest observed day is the real salary day.
+    day: Math.max(...g.days),
   }))
 
-  // Vroegste salarisdatum als "volgende salaris" referentie
-  const salaryDate = Math.min(...incomeSources.map(s => s.day))
+  for (const source of incomeSources) {
+    if (source.amount > highestMedianAmount) {
+      highestMedianAmount = source.amount
+      salaryDate = Math.round(source.day)
+    }
+  }
+
   const salaryExpected = incomeSources.reduce((s, i) => s + i.amount, 0)
 
   return { salaryDate, salaryExpected }
@@ -350,10 +362,6 @@ function generateSignals(data: {
 
 // ── HELPERS ────────────────────────────────────────────────────
 
-/**
- * Bereken dagen tot een bepaalde dag in de maand.
- * Als die dag al geweest is, bereken tot die dag volgende maand.
- */
 function calculateDaysUntil(today: Date, targetDay: number): number {
   const currentDay = today.getDate()
 
@@ -361,16 +369,11 @@ function calculateDaysUntil(today: Date, targetDay: number): number {
     return targetDay - currentDay
   }
 
-  // Dag is al geweest → bereken tot volgende maand
   const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, targetDay)
   const diffMs = nextMonth.getTime() - today.getTime()
   return Math.ceil(diffMs / (1000 * 60 * 60 * 24))
 }
 
-/**
- * Bereken mediaan van een array getallen.
- * Retourneert 0 bij lege array.
- */
 function median(values: number[]): number {
   if (values.length === 0) return 0
   const sorted = [...values].sort((a, b) => a - b)
