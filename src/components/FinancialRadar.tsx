@@ -47,6 +47,7 @@ export default function FinancialRadar() {
   const [recurring, setRecurring] = useState<RecurringItem[]>([])
   const [loading, setLoading] = useState(true)
   const [showRecurring, setShowRecurring] = useState(false)
+  const [showAll, setShowAll] = useState(false)
 
   useEffect(() => {
     fetch('/api/engine')
@@ -155,14 +156,14 @@ export default function FinancialRadar() {
             </button>
             {showRecurring && (
               <div className="px-5 pb-4 space-y-2">
-                {recurring.slice(0, 8).map(item => (
+                {(showAll ? recurring : recurring.slice(0, 5)).map(item => (
                   <div key={item.description} className="flex items-center justify-between">
                     <div>
                       <p className="text-sm capitalize" style={{ color: 'var(--text)' }}>
                         {item.description}
                       </p>
                       <p className="text-xs" style={{ color: 'var(--muted)' }}>
-                        Elke maand ~dag {item.dayOfMonth}
+                        Elke maand ~dag {Math.round(item.dayOfMonth)}
                       </p>
                     </div>
                     <p className="text-sm font-semibold tabular-nums" style={{ color: 'var(--text)' }}>
@@ -170,6 +171,15 @@ export default function FinancialRadar() {
                     </p>
                   </div>
                 ))}
+                {recurring.length > 5 && (
+                  <button
+                    onClick={() => setShowAll(!showAll)}
+                    className="w-full pt-2 text-xs font-medium"
+                    style={{ color: 'var(--brand)' }}
+                  >
+                    {showAll ? 'Toon minder' : `Toon alle ${recurring.length} vaste lasten`}
+                  </button>
+                )}
               </div>
             )}
           </div>

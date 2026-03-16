@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import DashboardShell from '@/components/DashboardShell'
 import { Suspense } from 'react'
+import { resolveCategory, buildCategoryMaps } from '@/lib/resolve-category'
 
 interface CalendarItem {
   name: string
@@ -95,12 +96,13 @@ export default async function DashboardPage() {
   ] = await Promise.all([
     supabase
       .from('bank_accounts')
-      .select('id, account_name, iban, balance, account_type')
-      .eq('user_id', user.id),
+      .select('id, account_name, iban, balance, account_type, provider')
+      .eq('user_id', user.id)
+      .neq('provider', 'iban_detected'),
 
     supabase
       .from('transactions')
-      .select('amount, category, description, transaction_date')
+      .select('amount, merchant_key, description, transaction_date')
       .eq('user_id', user.id)
       .gte('transaction_date', startOfMonth)
       .lte('transaction_date', endOfMonth)
@@ -130,6 +132,15 @@ export default async function DashboardPage() {
   const totalBalance = (accounts ?? [])
     .filter(a => a.account_type !== 'SAVINGS')
     .reduce((s, a) => s + (Number(a.balance) || 0), 0)
+
+  // ── Category resolution maps (single source of truth) ──────────────
+  const [{ data: catMapRows }, { data: catOverrideRows }, { data: catIbanRows }] = await Promise.all([
+    supabase.from('merchant_map').select('merchant_key, category').not('category', 'is', null),
+    supabase.from('merchant_user_overrides').select('merchant_key, category').eq('user_id', user.id).not('category', 'is', null),
+    supabase.from('bank_accounts').select('iban').eq('user_id', user.id).not('iban', 'is', null),
+  ])
+  const userIbans = (catIbanRows ?? []).map(a => a.iban).filter(Boolean)
+  const categoryMaps = buildCategoryMaps(catMapRows, catOverrideRows, userIbans)
 
   // ── Calendar items ────────────────────────────────────────────────
   let calendarItems: CalendarItem[] = []
@@ -255,23 +266,33 @@ export default async function DashboardPage() {
       }
     }
 
-    // Method 2: fallback via category='inkomen' (works with manual upload where merchant_key may be null)
+    // Method 2: fallback via income merchants from merchant_map (not tx.category)
     if (!detectedIncome) {
+      const { data: incomeKeys } = await supabase
+        .from('merchant_map')
+        .select('merchant_key')
+        .eq('income_hint', true)
+
+      const incomeKeySet = new Set((incomeKeys ?? []).map(r => r.merchant_key))
+
       const { data: incomeTx } = await supabase
         .from('transactions')
-        .select('amount, transaction_date')
+        .select('amount, transaction_date, merchant_key')
         .eq('user_id', user.id)
-        .eq('category', 'inkomen')
-        .gt('amount', 500) // Only substantial income (skip dividends, small refunds)
+        .gt('amount', 500)
         .gte('transaction_date', new Date(today.getFullYear(), today.getMonth() - 3, 1).toISOString().slice(0, 10))
         .order('amount', { ascending: false })
-        .limit(200)
+        .limit(500)
 
-      if (incomeTx && incomeTx.length > 0) {
+      const filteredIncome = (incomeTx ?? []).filter(tx =>
+        tx.merchant_key && incomeKeySet.has(tx.merchant_key)
+      )
+
+      if (filteredIncome && filteredIncome.length > 0) {
         // Group by approximate amount to find the main salary pattern
         // The largest recurring amount is most likely the salary
         const amountGroups = new Map<number, number[]>()
-        for (const tx of incomeTx) {
+        for (const tx of filteredIncome) {
           const amt = Math.round(Number(tx.amount) / 100) * 100 // Round to nearest 100
           if (!amountGroups.has(amt)) amountGroups.set(amt, [])
           amountGroups.get(amt)!.push(new Date(tx.transaction_date).getDate())
@@ -298,12 +319,11 @@ export default async function DashboardPage() {
   try {
     const { data: historicTx } = await supabase
       .from('transactions')
-      .select('amount, category, transaction_date')
+      .select('amount, merchant_key, description, transaction_date')
       .eq('user_id', user.id)
       .lt('amount', 0)
       .gte('transaction_date', sixMonthsAgo)
       .lt('transaction_date', startOfMonth)
-      .in('category', VARIABLE_BUDGET_CATEGORIES)
       .limit(3000)
 
     const maandTotalen: Record<string, Record<string, number>> = {}
@@ -311,8 +331,10 @@ export default async function DashboardPage() {
       const amt = Math.abs(Number(tx.amount ?? 0))
       if (!Number.isFinite(amt) || amt <= 0) continue
 
+      const cat = resolveCategory(tx, categoryMaps)
+      if (!VARIABLE_BUDGET_CATEGORIES.includes(cat)) continue
+
       const maand = tx.transaction_date.slice(0, 7)
-      const cat = tx.category ?? 'overig'
       if (!maandTotalen[maand]) maandTotalen[maand] = {}
       if (!maandTotalen[maand][cat]) maandTotalen[maand][cat] = 0
       maandTotalen[maand][cat] += amt
@@ -328,7 +350,7 @@ export default async function DashboardPage() {
       const budgetMediaan = Math.round(median(maandBedragen))
 
       const alGespendeerd = (thisMonthTx ?? [])
-        .filter(tx => tx.category === cat)
+        .filter(tx => resolveCategory(tx, categoryMaps) === cat)
         .reduce((s, tx) => {
           const amt = Number(tx.amount ?? 0)
           return Number.isFinite(amt) && amt < 0 ? s + Math.abs(amt) : s
@@ -382,7 +404,7 @@ export default async function DashboardPage() {
   const { data: analyseTx } = isHistoricData
     ? await supabase
         .from('transactions')
-        .select('amount, category')
+        .select('amount, merchant_key, description')
         .eq('user_id', user.id)
         .gte('transaction_date', analyseStart)
         .lte('transaction_date', analyseEnd)
@@ -396,7 +418,7 @@ export default async function DashboardPage() {
   let totalGespaard = 0
 
   for (const tx of analyseTx ?? []) {
-    const cat = tx.category ?? 'overig'
+    const cat = resolveCategory(tx, categoryMaps)
     const amount = Number(tx.amount ?? 0)
     if (!Number.isFinite(amount)) continue
 

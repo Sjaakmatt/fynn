@@ -5,6 +5,10 @@
 //
 // ⚠️  Ontworpen voor duizenden gebruikers — geen bias op individuele transactiedata.
 //     Keywords moeten generiek werken voor alle NL/BE banken en beschrijvingsformaten.
+//
+// ⚠️  Keywords moeten matchen op ZOWEL BEA/PIN descriptions ("Albert Heijn 1664")
+//     ALS iDEAL/SEPA descriptions ("Etos B.V.", "Amazon EU SARL", "Canva Pty Ltd").
+//     Voeg daarom altijd een korte/generieke variant toe naast specifieke varianten.
 
 export type Category =
   | 'wonen'
@@ -82,36 +86,48 @@ const RULES: Rule[] = [
       'huur', 'hypotheek', 'servicekosten', 'vve bijdrage', 'huurcommissie',
       'woonbron', 'vestia', 'ymere', 'havensteder', 'woningstichting',
       'stadswonen', 'huurpenningen', 'huurprijs',
-      'nuon', 'vattenfall', 'eneco', 'essent', 'greenchoice',
+      'nuon', 'vattenfall', 'vattenfall klantenservice', 'eneco', 'essent', 'greenchoice',
       'budget energie', 'tibber', 'electrabel', 'eandis', 'fluvius',
       'delta energie',
       'waternet', 'evides', 'brabant water', 'vitens', 'dunea', 'pwn',
       'waterrekening', 'drinkwater', 'waterleidingbedrijf',
       'ozb', 'rioolheffing', 'afvalstoffenheffing', 'gemeenteheffing',
       'gemeentebelasting',
-      'woonverzekering', 'inboedelverzekering', 'opstalverzekering',
       'erfpacht', 'woonlasten',
       'ziggo', 'kpn internet', 'odido thuis', 't-mobile thuis',
       'tele2 thuis', 'delta fiber', 'caiway', 'online.nl',
       'loodgieter', 'installateur', 'cv ketel', 'cv en lucht',
       'liftinstallatie', 'dakdekker', 'schilder', 'glazenwasser',
       'schoorsteenveger', 'elektricien',
+      'basispakket', 'bankkosten',
+      'gamma', 'praxis', 'hornbach', 'karwei', 'bouwmarkt',
+      // Verzekeringen (wonen, niet gezondheid — want het is een vaste last)
+      'woonverzekering', 'inboedelverzekering', 'opstalverzekering',
+      'centraal beheer', 'nationale-nederlanden',
+      'nn verzekering', 'interpolis', 'aegon verzekering',
+      'asr verzekering', 'allianz verzekering', 'reaal verzekering',
+      'unive verzekering', 'nh1816', 'nh 1816', 'inshared',
+      'hema verzekering', 'autoverzekering',
+      // Overheid & belastingen (vaste last)
+      'belastingdienst',
+      'waterschapsbelasting', 'hoogheemraadschap', 'waterschap',
+      'duo studiefinanciering', 'dienst uitvoering onderwijs', 'duo hoofdrekening',
+      // Kinderopvang (vaste last)
+      'kinderdagverblijf', 'buitenschoolse opvang',
+      'kinderopvang', 'gastouder', 'peuterspeelzaal',
+      'naschoolse opvang',
+      // Gemeente
+      'gemeente',
     ],
     category: 'wonen',
   },
 
-  // ── OVERHEID & BELASTINGEN ──────────────────────────────────────
+  // ── OVERHEID (overig — niet wonen, niet inkomen) ────────────────
   {
     keywords: [
-      'belastingdienst',
-      'waterschapsbelasting', 'hoogheemraadschap', 'waterschap',
       'cak eigen bijdrage', 'centraal administratie kantoor',
       'rdw kentekenregistratie', 'rijksdienst voor',
       'cjib boete', 'naheffing',
-      'duo studiefinanciering', 'dienst uitvoering onderwijs',
-      'kinderdagverblijf', 'buitenschoolse opvang',
-      'kinderopvang', 'gastouder', 'peuterspeelzaal',
-      'naschoolse opvang',
     ],
     category: 'overig',
   },
@@ -137,6 +153,8 @@ const RULES: Rule[] = [
       'ryanair', 'transavia', 'easyjet', 'klm ', 'tui fly', 'wizz air',
       'schiphol', 'eindhoven airport',
       'ns treinen', 'treinkaartje',
+      'tamoil', 'wasstraat',
+      'parkeergelden',
     ],
     category: 'transport',
   },
@@ -150,10 +168,16 @@ const RULES: Rule[] = [
       'bioscoop', 'pathe bioscoop', 'vue cinema', 'kinepolis',
       'theater', 'concertzaal', 'museum', 'attractiepark',
       'pretpark', 'efteling', 'walibi', 'duinrell',
+      'sprookjeswonderland', 'artis', 'madurodam', 'nemo science',
       'booking.com', 'airbnb', 'hotels.com', 'expedia',
       'sunweb', 'tui reizen', 'd-reizen', 'corendon', 'neckermann',
       'ticketmaster', 'eventbrite', 'ticketswap',
-      'amazon.nl', 'amazon.de', 'amazon.com', 'bol.com',
+      // Amazon & Bol — bare keywords voor iDEAL ("Amazon EU SARL", "BOLCOM BV")
+      'amazon.nl', 'amazon.de', 'amazon.com', 'amazon ', 'bol.com', 'bolcom',
+      // Huishoudwinkels (niet kleding, niet boodschappen)
+      'hema', 'action ',
+      // Huisdier
+      'brekz',
     ],
     category: 'entertainment',
   },
@@ -172,6 +196,10 @@ const RULES: Rule[] = [
       'delhaize', 'colruyt', 'carrefour', 'okay supermarkt',
       'bio-planet', 'sligro', 'makro', 'metro cash',
       'supermarkt', 'groenteboer', 'slagerij', 'bakkerij',
+      // Deen supermarkt (diverse varianten in bankbeschrijvingen)
+      'deen supermarkt', 'l.m. deen', 'deen ',
+      // Online boodschappen
+      'e-food',
     ],
     category: 'boodschappen',
   },
@@ -188,55 +216,79 @@ const RULES: Rule[] = [
       'eetcafe', 'pizzeria', 'sushi', 'ramen', 'noodle', 'wokrestaurant',
       'broodjeszaak', 'lunchroom', 'lunchcafe', 'lunchbar',
       'grand cafe', 'eetbar', 'wine bar',
+      'friethuys', 'friethuis', 'friet ', 'frituur',
+      'bedrijfsrest', 'kantine',
       'starbucks', 'costa coffee', 'espressobar', 'koffiezaak',
       'coffee company', 'bagels and beans',
+      // Markt / food (generiek)
+      'foodhal', 'food market',
     ],
     category: 'eten & drinken',
   },
 
-  // ── ABONNEMENTEN ─────────────────────────────────────────────────
+  // ── ABONNEMENTEN (alleen echte digitale/telecom abonnementen) ───
   {
     keywords: [
+      // Streaming video
       'netflix', 'disney+', 'disney plus', 'videoland', 'npo plus',
       'hbo max', 'max.com', 'paramount+', 'amazon prime', 'prime video',
       'dazn ', 'viaplay', 'ziggo sport', 'discovery+', 'apple tv',
+      // Streaming muziek
       'spotify', 'apple music', 'deezer', 'tidal music',
       'itunes', 'apple one', 'apple icloud', 'google play',
       'google one', 'youtube premium', 'youtube music',
-      'adobe creative', 'canva pro', 'figma ', 'notion ', 'slack ', 'dropbox',
+      // Software/SaaS — bare keywords voor iDEAL ("Adobe Inc", "Canva Pty Ltd")
+      'adobe creative', 'adobe ', 'canva pro', 'canva ', 'figma ', 'notion ', 'slack ', 'dropbox',
       'microsoft 365', 'office 365', 'onedrive', 'icloud storage',
       'chatgpt', 'openai', 'anthropic', 'midjourney', 'github',
+      'claude.ai', 'claude ai',
+      // Gaming (abonnement, niet entertainment)
+      'discord',
+      // Telecom mobiel (alleen met "mobiel" — zonder = wonen/internet)
       'kpn mobiel', 'vodafone mobiel', 't-mobile mobiel', 'odido mobiel',
       'tele2 mobiel', 'simpel mobiel',
       'lebara', 'lycamobile', 'hollandsnieuwe',
+      // Telecom providers (generiek — vallen vaak onder wonen maar als er
+      // geen "internet"/"thuis" in zit dan zijn het mobiel-achtige abonnementen)
+      'odido', 'vodafone', 'kpn',
+      // Kranten/media
       'nrc handelsblad', 'volkskrant', 'financieele dagblad',
       'telegraaf', 'trouw ', 'ad.nl',
       'blendle', 'readly', 'scribd',
-      'basic-fit', 'anytime fitness', 'sportschool', 'fit for free',
-      'planet fitness', 'clubsportive', 'healthcity',
-      'subscription', 'abonnement', 'maandelijks lidmaatschap',
+      // Productized services
+      'the insiders lab', 'insiders lab',
+      // Dating/VPN/password
       'tinder gold', 'bumble premium', 'nordvpn', 'expressvpn',
       'lastpass', 'dashlane', '1password',
+      // Apple (generiek — subscription incasso's)
+      'apple.com/bill',
     ],
     category: 'abonnementen',
   },
 
-  // ── GEZONDHEID ───────────────────────────────────────────────────
+  // ── GEZONDHEID (inclusief sport & verzorging) ─────────────────
   {
     keywords: [
-      'apotheek', 'etos drogist', 'kruidvat',
+      // Sport & fitness
+      'basic-fit', 'anytime fitness', 'sportschool', 'fit for free',
+      'planet fitness', 'clubsportive', 'healthcity',
+      'optisport', 'crossfit', 'mvmnt gym', 'mvmnt',
+      'sportinstituut', 'health & sport',
+      // Apotheek & drogist — bare keywords voor iDEAL ("Etos B.V.")
+      'apotheek', 'etos drogist', 'etos ', 'kruidvat',
+      // Zorg
       'huisarts', 'tandarts', 'fysiotherap', 'psycholog', 'therapeut',
+      'eigen risico', 'zorgpremie', 'ziekenhuis', 'kliniek',
       'zorgverzekering', 'zilveren kruis', 'menzis',
       'achmea zorg', 'dsw zorgverzekeraar', 'onvz', 'ditzo',
-      'eigen risico', 'zorgpremie', 'ziekenhuis', 'kliniek',
+      // Optica — bare keywords voor iDEAL
       'drogist', 'da drogist', 'optician', 'brillen', 'contactlens',
       'hans anders', 'eyes and more', 'specsavers', 'pearle',
+      'alensa',
+      // Supplementen
       'holland barrett', 'vitaminstore', 'gezondheidswinkel',
-      'centraal beheer', 'nationale-nederlanden',
-      'nn verzekering', 'interpolis', 'aegon verzekering',
-      'asr verzekering', 'allianz verzekering', 'reaal verzekering',
-      'unive verzekering', 'nh1816', 'inshared',
-      'hema verzekering',
+      // Verzorging
+      'barbershop', 'kapper', 'kapster', 'hairdresser', 'barber',
     ],
     category: 'gezondheid',
   },
@@ -244,7 +296,8 @@ const RULES: Rule[] = [
   // ── KLEDING ──────────────────────────────────────────────────────
   {
     keywords: [
-      'zara ', 'h&m', 'mango ', 'primark', 'uniqlo', 'cos store',
+      // H&M — "h&m" matcht BEA, "h.m" matcht iDEAL ("H.M Online")
+      'zara ', 'h&m', 'h.m ', 'mango ', 'primark', 'uniqlo', 'cos store',
       'weekday', 'arket', 'other stories',
       'nike store', 'adidas store', 'puma store', 'new balance',
       'vans store', 'converse',
@@ -254,6 +307,10 @@ const RULES: Rule[] = [
       'calvin klein', 'ralph lauren', 'lacoste',
       'schoenenreus', 'footlocker', 'omoda', 'sacha schoenen',
       'zeeman', 'wibra',
+      // C&A — iDEAL variant
+      'c&a', 'c . a online', 'c.a ',
+      // Shoeby
+      'shoeby',
     ],
     category: 'kleding',
   },

@@ -346,45 +346,88 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Categorization layers: overrides → merchant_map → IBAN check + rule engine
-    const { data: overrides } = await supabase
-      .from('category_overrides')
-      .select('description_pattern, category')
-      .eq('user_id', user.id)
+    // ── Ensure ALL detected own IBANs exist in bank_accounts ──────
+    // The upload only creates 1 account (source account from the file).
+    // But detectOwnIbans finds all own IBANs from bidirectional transfers.
+    // These need to be in bank_accounts so interne_overboeking detection
+    // works across future uploads and in the categorize engine.
+    for (const iban of userIbans) {
+      // Skip non-IBAN strings (e.g. raw account numbers like "104545003")
+      if (!/^[A-Z]{2}\d{2}[A-Z]{4}\d{7,}$/i.test(iban)) continue
 
-    const overrideMap: Record<string, string> = {}
-    overrides?.forEach(o => { overrideMap[o.description_pattern] = o.category })
+      const externalId = `manual_${iban}`
+      const { data: existing } = await supabase
+        .from('bank_accounts')
+        .select('id, iban')
+        .eq('user_id', user.id)
+        .eq('external_id', externalId)
+        .maybeSingle()
 
-    // Fetch merchant_map keyed by merchant_key (the primary lookup used everywhere)
-    const { data: merchantMap } = await supabase
-      .from('merchant_map')
-      .select('merchant_key, category')
-      .not('category', 'is', null)
+      if (existing) {
+        // Update IBAN if it was stored as raw account number
+        if (existing.iban !== iban) {
+          await supabase
+            .from('bank_accounts')
+            .update({ iban })
+            .eq('id', existing.id)
+        }
+        continue
+      }
 
-    const merchantKeyCategory: Record<string, string> = {}
-    merchantMap?.forEach(m => { merchantKeyCategory[m.merchant_key] = m.category })
+      // Also check by iban field to avoid duplicates
+      const { data: byIban } = await supabase
+        .from('bank_accounts')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('iban', iban)
+        .maybeSingle()
 
-    // Also fetch user-level merchant overrides
-    const { data: merchantOverrides } = await supabase
-      .from('merchant_user_overrides')
-      .select('merchant_key, category')
-      .eq('user_id', user.id)
-      .not('category', 'is', null)
+      if (byIban) continue
 
-    const merchantOverrideMap: Record<string, string> = {}
-    merchantOverrides?.forEach(o => { merchantOverrideMap[o.merchant_key] = o.category! })
+      // Derive institution name from IBAN bank code
+      const bankCode = iban.slice(4, 8).toUpperCase()
+      const bankNames: Record<string, string> = {
+        ABNA: 'ABN AMRO', INGB: 'ING', RABO: 'Rabobank',
+        BUNQ: 'Bunq', KNAB: 'Knab', TRIO: 'Triodos',
+        ASNB: 'ASN Bank', RBRB: 'RegioBank', SNSB: 'SNS',
+      }
+      const instName = bankNames[bankCode] || 'Onbekend'
+
+      await supabase
+        .from('bank_accounts')
+        .insert({
+          user_id: user.id,
+          institution_name: instName,
+          account_name: `${instName} ${iban.slice(-4)}`,
+          iban,
+          currency: 'EUR',
+          provider: 'iban_detected',
+          external_id: externalId,
+          balance: 0,
+          account_type: 'CACC',
+        })
+        .select('id')
+        .maybeSingle()
+    }
+
+    // Also fix the primary account's IBAN if it was stored as raw account number
+    if (result.accountNumber && !/^[A-Z]{2}\d{2}/.test(result.accountNumber)) {
+      // Try to find the full IBAN from userIbans that matches this account number
+      const padded = result.accountNumber.replace(/^0+/, '').padStart(10, '0')
+      const fullIban = userIbans.find(iban =>
+        /^[A-Z]{2}\d{2}[A-Z]{4}/.test(iban) && iban.includes(padded)
+      )
+      if (fullIban) {
+        await supabase
+          .from('bank_accounts')
+          .update({ iban: fullIban })
+          .eq('id', accountId)
+      }
+    }
 
     const txRows = result.transactions.map((tx: ParsedTransaction, i: number) => {
-      const descPattern = tx.description.toLowerCase().replace(/'/g, '').trim()
-
       // Extract merchant identity from description
       const { merchantKey, merchantName } = extractMerchant(tx.description, Math.abs(tx.amount))
-
-      // Priority: user overrides → merchant user override → merchant_map → IBAN-aware categorization
-      const category = overrideMap[descPattern]
-        || merchantOverrideMap[merchantKey]
-        || merchantKeyCategory[merchantKey]
-        || categorizeTransaction(tx.description, tx.amount, undefined, userIbans)
 
       return {
         user_id: user.id,
@@ -392,7 +435,6 @@ export async function POST(request: NextRequest) {
         amount: tx.amount,
         currency: tx.currency,
         description: tx.description,
-        category,
         merchant_key: merchantKey,
         merchant_name: merchantName,
         transaction_date: tx.date,
@@ -421,7 +463,10 @@ export async function POST(request: NextRequest) {
 
     // Seed merchant_map with merchant_key (skip internal transfers)
     const seenMerchantKeys = new Set<string>()
-    const merchantSeeds: { merchant_key: string; merchant_name: string; category: string }[] = []
+    const merchantSeeds: { merchant_key: string; merchant_name: string; category: string; income_hint?: boolean }[] = []
+
+    // Keys that should always be marked as income sources
+    const INCOME_MERCHANT_KEYS = new Set(['nl:salaris', 'nl:uwv', 'nl:dividend', 'nl:rente'])
 
     for (const tx of result.transactions) {
       if (!tx.counterparty || tx.counterparty === 'Onbekend') continue
@@ -431,10 +476,14 @@ export async function POST(request: NextRequest) {
       if (seenMerchantKeys.has(merchantKey) || merchantKey === 'nl:unknown') continue
       seenMerchantKeys.add(merchantKey)
 
+      const category = categorizeTransaction(tx.description, tx.amount, undefined, userIbans)
+      const isIncome = category === 'inkomen' || INCOME_MERCHANT_KEYS.has(merchantKey)
+
       merchantSeeds.push({
         merchant_key: merchantKey,
         merchant_name: merchantName,
-        category: categorizeTransaction(tx.description, tx.amount, undefined, userIbans),
+        category,
+        ...(isIncome ? { income_hint: true } : {}),
       })
     }
 
@@ -444,6 +493,22 @@ export async function POST(request: NextRequest) {
         .upsert(seed, { onConflict: 'merchant_key', ignoreDuplicates: true })
         .select()
         .maybeSingle()
+    }
+
+    // Ensure income merchants have income_hint = true (even if they already existed)
+    const incomeSeeds = merchantSeeds.filter(s => s.income_hint === true)
+    if (incomeSeeds.length > 0) {
+      await supabase
+        .from('merchant_map')
+        .upsert(
+          incomeSeeds.map(s => ({
+            merchant_key: s.merchant_key,
+            merchant_name: s.merchant_name,
+            category: s.category,
+            income_hint: true,
+          })),
+          { onConflict: 'merchant_key' }
+        )
     }
 
     // Trigger recurring detection (non-blocking)

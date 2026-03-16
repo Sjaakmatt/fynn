@@ -23,7 +23,7 @@ type MerchantExtract = {
 //     thousands of users with diverse transaction descriptions.
 
 const KNOWN_NAMES: [string, string][] = [
-  // Specifiek → generiek volgorde
+  // Specifiek → generiek volgorde (langere matches eerst)
   ["nationale-nederlanden", "Nationale-Nederlanden"],
   ["nn verzekering", "Nationale-Nederlanden"],
   ["albert heijn", "Albert Heijn"],
@@ -32,18 +32,60 @@ const KNOWN_NAMES: [string, string][] = [
   ["abn amro", "ABN AMRO"],
   ["ing bank", "ING"],
   ["uber eats", "Uber Eats"],
-  ["apple services", "Apple Services"],
-  ["apple.com", "Apple"],
-  ["delta energie", "Delta Energie"],
-  ["centraal beheer", "Centraal Beheer"],
-  ["duo hoofdrekening", "DUO"],
-  // Generieke namen (korter, maar nog steeds uniek genoeg)
+
+  // Telecom (vang alle varianten op)
+  ["vodafone libertel", "Vodafone"],
+  ["vodafone", "Vodafone"],
+  ["ziggo services", "Ziggo"],
+  ["ziggo", "Ziggo"],
+  ["odido", "Odido"],
+  ["kpn", "KPN"],
+
+  // Streaming / SaaS (vang alle varianten op)
+  ["netflix international", "Netflix"],
+  ["netflix.com", "Netflix"],
   ["netflix", "Netflix"],
   ["spotify", "Spotify"],
-  ["google", "Google"],
-  ["microsoft", "Microsoft"],
+  ["disney+", "Disney+"],
+  ["adobe systems", "Adobe"],
+  ["adobe creative", "Adobe"],
   ["adobe", "Adobe"],
+  ["canva pty", "Canva"],
+  ["canva", "Canva"],
+  ["microsoft", "Microsoft"],
+  ["openai", "OpenAI"],
+  ["claude.ai", "Claude AI"],
+  ["google", "Google"],
   ["dropbox", "Dropbox"],
+  ["apple services", "Apple Services"],
+  ["apple.com", "Apple"],
+
+  // Energie
+  ["vattenfall klantenservice", "Vattenfall"],
+  ["vattenfall", "Vattenfall"],
+  ["delta energie", "Delta Energie"],
+  ["delta fiber", "DELTA Fiber"],
+  ["eneco", "Eneco"],
+  ["essent", "Essent"],
+  ["greenchoice", "Greenchoice"],
+
+  // Verzekeringen
+  ["centraal beheer", "Centraal Beheer"],
+  ["nh1816", "NH1816 Verzekeringen"],
+  ["nh 1816", "NH1816 Verzekeringen"],
+
+  // Water
+  ["pwn waterleidingbedrijf", "PWN"],
+  ["pwn", "PWN"],
+  ["vitens", "Vitens"],
+  ["dunea", "Dunea"],
+
+  // Overheid
+  ["belastingdienst", "Belastingdienst"],
+  ["hoogheemraadschap", "Hoogheemraadschap"],
+  ["duo hoofdrekening", "DUO"],
+
+  // Winkels / eten
   ["bol.com", "Bol.com"],
   ["amazon", "Amazon"],
   ["zalando", "Zalando"],
@@ -54,27 +96,46 @@ const KNOWN_NAMES: [string, string][] = [
   ["jumbo", "Jumbo"],
   ["lidl", "Lidl"],
   ["aldi", "Aldi"],
+  ["starbucks", "Starbucks"],
+  ["mcdonald", "McDonald's"],
+
+  // Payment processors
   ["klarna", "Klarna"],
   ["paypal", "PayPal"],
-  ["odido", "Odido"],
-  ["vodafone", "Vodafone"],
-  ["kpn", "KPN"],
-  ["ziggo", "Ziggo"],
-  ["vattenfall", "Vattenfall"],
-  ["eneco", "Eneco"],
-  ["essent", "Essent"],
-  ["greenchoice", "Greenchoice"],
+
+  // Overig
+  ["uwv", "UWV"],
+  ["svb", "SVB"],
   ["aegon", "Aegon"],
   ["interpolis", "Interpolis"],
   ["rabobank", "Rabobank"],
-  ["vitens", "Vitens"],
-  ["dunea", "Dunea"],
-  ["uwv", "UWV"],
-  ["svb", "SVB"],
-  ["belastingdienst", "Belastingdienst"],
-  ["hoogheemraadschap", "Hoogheemraadschap"],
   ["wodify", "Wodify"],
   ["crossfit", "CrossFit"],
+  ["basic-fit", "Basic-Fit"],
+  ["mvmnt", "MVMNT Gym"],
+  ["optisport", "Optisport"],
+
+  // Supermarkten (stabiele keys)
+  ["deen supermarkt", "Deen"],
+  ["l.m. deen", "Deen"],
+  ["dekamarkt", "DekaMarkt"],
+  ["vomar", "Vomar"],
+
+  // Bouwmarkten
+  ["gamma", "Gamma"],
+  ["praxis", "Praxis"],
+  ["hornbach", "Hornbach"],
+  ["karwei", "Karwei"],
+  ["intratuin", "Intratuin"],
+
+  // Overheid
+  ["belastingdienst", "Belastingdienst"],
+  ["hoogheemraadschap", "Hoogheemraadschap"],
+  ["duo hoofdrekening", "DUO"],
+
+  // Restaurants/cafes (common chains)
+  ["la mere anne", "La Mere Anne"],
+  ["kfc", "KFC"],
 ];
 
 // ── SPECIAL DESCRIPTION PATTERNS ───────────────────────────────
@@ -106,6 +167,30 @@ const SPECIAL_PATTERNS: SpecialPattern[] = [
     test: (d) => /\brente\b/i.test(d) && /\b(spaar|deposito|rekening)\b/i.test(d),
     merchantName: "Rente",
     merchantKey: "nl:rente",
+  },
+  // ABN AMRO Hypotheek: large SEPA incasso from ABN AMRO Bank N.V. (not salary, not bankkosten)
+  {
+    test: (d) => {
+      const lower = d.toLowerCase();
+      return lower.includes('abn amro bank') && 
+        !lower.includes('salarisrekening') && !lower.includes('salaris') &&
+        !lower.includes('basispakket') && !lower.includes('bankkosten') &&
+        /incasso|hypotheek/i.test(d);
+    },
+    merchantName: "Hypotheek",
+    merchantKey: "nl:hypotheek",
+  },
+  // ABN AMRO Bankkosten: "Basispakket" / "Bankkosten" pattern
+  {
+    test: (d) => /\bbasispakket\b/i.test(d) || (/\bbankkosten\b/i.test(d) && /abn amro/i.test(d)),
+    merchantName: "ABN AMRO Bankkosten",
+    merchantKey: "nl:abn-amro-bankkosten",
+  },
+  // Gemeente: matches "Gemeente X" pattern — key is always nl:gemeente
+  {
+    test: (d) => /\bgemeente\s+\w/i.test(d) && !/\bgemeenteheffing\b/i.test(d) && !/\bgemeentebelasting\b/i.test(d),
+    merchantName: "Gemeente",
+    merchantKey: "nl:gemeente",
   },
 ];
 
@@ -153,19 +238,23 @@ export function cleanDescriptionWithAmount(raw: string, amount: number): string 
 }
 
 export function makeMerchantKey(rawNameOrDescription: string, processor?: string): string {
-  // If someone passes full description, still works because we normalize heavily.
+  // Check KNOWN_NAMES first — this prevents duplicate keys for the same merchant
+  // (e.g. "Netflix International B.V." and "netflix.com" both → "nl:netflix")
+  const lower = (rawNameOrDescription ?? "").toLowerCase();
+  for (const [key] of KNOWN_NAMES) {
+    if (lower.includes(key)) {
+      // Use the KNOWN_NAMES key as the merchant identity
+      const normalizedKnown = key.replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+      const proc = normalizeProcessor(processor);
+      return proc ? `nl:${proc}:${normalizedKnown}` : `nl:${normalizedKnown}`;
+    }
+  }
+
+  // Fallback: normalize the raw input
   const base = normalizeMerchantToken(rawNameOrDescription);
-
-  // Apply known aliases to unify keys across variants
   const aliased = applyKnownAliases(base);
-
-  // Remove generic noise tokens that don't identify a merchant
   const stripped = stripNonIdentityNoise(aliased);
-
-  // If processor is known and the merchant is ambiguous, keep processor prefix
   const proc = normalizeProcessor(processor);
-
-  // Final key: stable + short
   const key = stripped || "unknown";
   return proc ? `nl:${proc}:${key}` : `nl:${key}`;
 }
@@ -177,13 +266,24 @@ export function makeMerchantKey(rawNameOrDescription: string, processor?: string
 function extractNameCandidate(d: string): string {
   // ── 1. /TRTP/ structured format (iDEAL, SEPA Overboeking)
   const trptNameMatch = d.match(/\/NAME\/([^/]+)\//i);
-  if (trptNameMatch) return trptNameMatch[1].trim();
+  if (trptNameMatch) {
+    const name = trptNameMatch[1].trim();
+    // If NAME is a payment processor, look deeper for real merchant
+    const resolved = resolveProcessorName(name, d);
+    if (resolved) return resolved;
+    return name;
+  }
 
   // ── 2. "Naam: X" (SEPA)
   const naamMatch = d.match(
     /\bNaam:\s*(.+?)(?:\s+(?:Machtiging|Omschrijving|IBAN|Kenmerk|BIC|Incassant|Ref\.|EREF)|$)/i
   );
-  if (naamMatch) return naamMatch[1].trim();
+  if (naamMatch) {
+    const name = naamMatch[1].trim();
+    const resolved = resolveProcessorName(name, d);
+    if (resolved) return resolved;
+    return name;
+  }
 
   // ── 3. BEA / Betaalpas PIN
   const beaMatch = d.match(/BEA,?\s+(?:Apple Pay\s+)?(.+?),PAS\d+/i);
@@ -268,6 +368,21 @@ function normalizeMerchantToken(input: string): string {
 
   // Remove IBAN-like tokens
   s = s.replace(/\b[a-z]{2}\d{2}[a-z0-9]{10,}\b/gi, " ");
+
+  // Remove amounts like "4 30", "1 50", "3 70", "14 95" (prices from bank descriptions)
+  s = s.replace(/\b\d{1,3}\s+\d{2}\b/g, " ");
+
+  // Remove standalone small numbers (leftover amounts, dates, etc.)
+  s = s.replace(/\b\d{1,4}\b/g, " ");
+
+  // Remove legal suffixes
+  s = s.replace(/\b(?:b\.?v\.?|n\.?v\.?|ltd|limited|gmbh|inc|s\.?a\.?|pte|pty)\b/gi, " ");
+
+  // Remove generic business words that don't identify the merchant
+  s = s.replace(/\b(?:international|services|klantenservice|libertel|nederland)\b/gi, " ");
+
+  // Remove "dd-" patterns (Netflix "DD- -8288-" style references)
+  s = s.replace(/\bdd-[\s\-\d]*/gi, " ");
 
   // Collapse whitespace
   s = s.replace(/\s+/g, " ").trim();
@@ -371,6 +486,58 @@ function detectProcessor(d: string): MerchantExtract["processor"] | undefined {
   if (s.includes("riverty")) return "riverty";
   if (s.includes("ccv*") || s.includes("ccv *") || s.includes("ccv")) return "ccv";
   return undefined;
+}
+
+// ── PAYMENT PROCESSOR PASS-THROUGH ────────────────────────────
+// When the NAME field contains a payment processor (PPRO, Mollie, Adyen, etc.)
+// instead of the actual merchant, look deeper in the description for the real brand.
+
+const PROCESSOR_NAMES = [
+  'ppro payment services',
+  'ppro',
+  'mollie',
+  'adyen',
+  'stripe',
+  'buckaroo',
+  'multisafepay',
+  'pay.nl',
+];
+
+function resolveProcessorName(name: string, fullDescription: string): string | null {
+  const lower = name.toLowerCase();
+  const isProcessor = PROCESSOR_NAMES.some(p => lower.includes(p));
+  if (!isProcessor) return null;
+
+  const dLower = fullDescription.toLowerCase();
+
+  // Check KNOWN_NAMES against the full description (not just the NAME field)
+  for (const [key, displayName] of KNOWN_NAMES) {
+    if (dLower.includes(key)) {
+      // Don't match the processor itself as the merchant
+      if (PROCESSOR_NAMES.some(p => key.includes(p))) continue;
+      return displayName;
+    }
+  }
+
+  // Try /REMI/ field: "/REMI/769T3Y2 Adobe" → "Adobe"
+  const remiMatch = fullDescription.match(/\/REMI\/[^\s]*\s+([A-Za-z][A-Za-z0-9 .&\-]+)/);
+  if (remiMatch) return remiMatch[1].trim();
+
+  // Try "Omschrijving: XXX" field
+  const omschMatch = fullDescription.match(/Omschrijving:\s*\S+\s+([A-Za-z][A-Za-z0-9 .&\-]+)/i);
+  if (omschMatch) return omschMatch[1].trim();
+
+  // Try /MARF/ field for brand clues: "ADOBE-AE05286800068CNL"
+  const marfMatch = fullDescription.match(/\/MARF\/([A-Za-z]+)/);
+  if (marfMatch) {
+    const brand = marfMatch[1].trim();
+    // Look up brand in KNOWN_NAMES
+    for (const [key, displayName] of KNOWN_NAMES) {
+      if (brand.toLowerCase().includes(key)) return displayName;
+    }
+  }
+
+  return null;
 }
 
 function detectChannel(d: string): MerchantExtract["channel"] {

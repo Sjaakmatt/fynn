@@ -112,7 +112,7 @@ export async function detectRecurringItems(
         days: [],
         dates: [],
         name: mapEntry?.merchant_name ?? tx.merchant_name ?? k,
-        category: mapEntry?.category ?? tx.category ?? 'overig',
+        category: mapEntry?.category ?? 'overig',
       })
     }
     const g = groups.get(k)!

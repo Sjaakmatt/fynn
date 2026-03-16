@@ -55,7 +55,7 @@ export async function POST(_request: NextRequest) {
         .from("transactions")
         .select("id, description, amount, merchant_key, merchant_name")
         .eq("user_id", user.id)
-        .or("category.is.null,merchant_key.is.null")
+        .is("merchant_key", null)
         .range(from, from + PAGE_SIZE - 1);
 
       if (error) throw error;
@@ -99,10 +99,9 @@ export async function POST(_request: NextRequest) {
       }
     }
 
-    // ── 5) Categorize + backfill merchant fields ────────────────
+    // ── 5) Backfill merchant fields (NO category write — category lives in merchant_map) ──
     const updates: Array<{
       id: string;
-      category: string;
       merchant_key?: string;
       merchant_name?: string;
     }> = [];
@@ -121,27 +120,14 @@ export async function POST(_request: NextRequest) {
         merchantName = ex.merchantName;
       }
 
-      // Prioriteit: user override → merchant_map → IBAN-aware engine (incl. keyword fallback)
-      let category: string;
-      if (merchantKey && overrideMap.has(merchantKey)) {
-        category = overrideMap.get(merchantKey)!;
-      } else {
-        const mmCat = merchantKey ? merchantMapCategory.get(merchantKey) ?? null : null;
-        // categorizeTransaction checkt: merchantMapCat → IBAN match → keywords → rules → overig
-        category = categorizeTransaction(
-          tx.description ?? "",
-          safeAmt,
-          mmCat,
-          userIbans,
-        );
+      // Only update if we have something new to write
+      if (merchantKey && (!tx.merchant_key || !tx.merchant_name)) {
+        updates.push({
+          id: tx.id,
+          ...(merchantKey ? { merchant_key: merchantKey } : {}),
+          ...(merchantName ? { merchant_name: merchantName } : {}),
+        });
       }
-
-      updates.push({
-        id: tx.id,
-        category,
-        ...(merchantKey ? { merchant_key: merchantKey } : {}),
-        ...(merchantName ? { merchant_name: merchantName } : {}),
-      });
     }
 
     // ── 6) Batched upsert ───────────────────────────────────────

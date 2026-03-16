@@ -22,7 +22,10 @@ export async function PATCH(request: NextRequest) {
       .eq("user_id", user.id)
       .single();
 
-    if (txErr) return NextResponse.json({ error: txErr.message }, { status: 500 });
+    if (txErr) {
+      console.error("[override] step 1 tx fetch:", txErr.message);
+      return NextResponse.json({ error: txErr.message }, { status: 500 });
+    }
     if (!tx) return NextResponse.json({ error: "Transaction not found" }, { status: 404 });
 
     const amt = Number(tx.amount ?? 0);
@@ -37,20 +40,46 @@ export async function PATCH(request: NextRequest) {
       merchantName = ex.merchantName;
     }
 
-    // 2) Update transaction category
-    const { error: upTxErr } = await supabase
-      .from("transactions")
-      .update({
-        category,
-        ...(merchantKey ? { merchant_key: merchantKey } : {}),
-        ...(merchantName ? { merchant_name: merchantName } : {}),
-      })
-      .eq("id", transactionId)
-      .eq("user_id", user.id);
+    // 2) Backfill merchant_key/name on transaction if missing (NO category write)
+    if (merchantKey && !tx.merchant_key) {
+      const { error: upTxErr } = await supabase
+        .from("transactions")
+        .update({
+          ...(merchantKey ? { merchant_key: merchantKey } : {}),
+          ...(merchantName ? { merchant_name: merchantName } : {}),
+        })
+        .eq("id", transactionId)
+        .eq("user_id", user.id);
 
-    if (upTxErr) return NextResponse.json({ error: upTxErr.message }, { status: 500 });
+      if (upTxErr) {
+        console.error("[override] step 2 tx update:", upTxErr.message);
+        return NextResponse.json({ error: upTxErr.message }, { status: 500 });
+      }
+    }
 
-    // 3) Sla override op per user — dit wint altijd van merchant_map bij toekomstige categorisaties
+    // 3) Ensure merchant_map row exists (FK on merchant_user_overrides requires it)
+    if (merchantKey) {
+      const { data: existing } = await supabase
+        .from("merchant_map")
+        .select("merchant_key")
+        .eq("merchant_key", merchantKey)
+        .maybeSingle();
+
+      if (!existing) {
+        const { error: insertErr } = await supabase
+          .from("merchant_map")
+          .insert({
+            merchant_key: merchantKey,
+            merchant_name: merchantName ?? merchantKey,
+          });
+
+        if (insertErr) {
+          console.warn("[override] step 3 merchant_map insert (non-fatal):", insertErr.message);
+        }
+      }
+    }
+
+    // 4) Save user override
     if (merchantKey) {
       const { error: ovErr } = await supabase
         .from("merchant_user_overrides")
@@ -64,16 +93,15 @@ export async function PATCH(request: NextRequest) {
           { onConflict: "user_id,merchant_key" }
         );
 
-      if (ovErr) return NextResponse.json({ error: ovErr.message }, { status: 500 });
+      if (ovErr) {
+        console.error("[override] step 4 user override:", ovErr.message);
+        return NextResponse.json({ error: ovErr.message }, { status: 500 });
+      }
     }
-
-    // merchant_map wordt NIET geüpdatet vanuit user overrides —
-    // dat is een globale tabel en mag niet door individueel gebruikersgedrag worden beïnvloed.
-    // De categorize engine beheert merchant_map op systeem-niveau.
 
     return NextResponse.json({ success: true, merchant_key: merchantKey });
   } catch (error) {
-    console.error("Override error:", error);
+    console.error("[override] uncaught:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

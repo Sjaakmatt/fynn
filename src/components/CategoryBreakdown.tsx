@@ -30,6 +30,8 @@ const CATEGORY_LABELS: Record<string, string> = {
 interface Transaction {
   id: string
   description: string
+  merchant_name: string | null
+  merchant_key: string | null
   amount: number
   transaction_date: string
   category: string
@@ -256,13 +258,16 @@ export default function CategoryBreakdown({ sortedCategories: initialCategories,
                           className="px-5 py-3 flex items-center justify-between gap-3"
                           style={{ borderBottom: '1px solid var(--border)' }}>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm truncate" style={{ color: 'var(--text)' }}>
-                              {tx.description}
+                            <p className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>
+                              {tx.merchant_name || tx.description}
                             </p>
-                            <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                            <p className="text-xs truncate" style={{ color: 'var(--muted)' }}>
                               {new Date(tx.transaction_date).toLocaleDateString('nl-NL', {
                                 day: 'numeric', month: 'short'
                               })}
+                              {tx.merchant_name && tx.description !== tx.merchant_name && (
+                                <> · {tx.description}</>
+                              )}
                             </p>
                           </div>
                           <p className="text-sm tabular-nums flex-shrink-0"
