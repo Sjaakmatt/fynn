@@ -45,3 +45,9 @@ body {
 .animate-fadeIn {
   animation: fadeIn 0.2s ease-out;
 }
+
+.logo-dark { display: none !important; }
+.logo-light { display: block !important; }
+
+.dark .logo-dark { display: block !important; }
+.dark .logo-light { display: none !important; }

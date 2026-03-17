@@ -84,7 +84,7 @@ export default async function DashboardPage() {
   if (cached) {
     // We hebben nog wél profile + briefing + accounts nodig (kleine queries)
     const [{ data: profile }, { data: briefing }, { data: accounts }] = await Promise.all([
-      supabase.from('profiles').select('subscription_status, trial_ends_at, full_name').eq('id', user.id).single(),
+      supabase.from('profiles').select('subscription_status, trial_ends_at, full_name, is_beta').eq('id', user.id).single(),
       supabase.from('briefings').select('*').eq('user_id', user.id).single(),
       supabase.from('bank_accounts').select('id, account_name, iban, balance, account_type, provider').eq('user_id', user.id).neq('provider', 'iban_detected'),
     ])
@@ -107,6 +107,7 @@ export default async function DashboardPage() {
           isPro={isPro}
           activeMonthLabel={cached.activeMonthLabel}
           isHistoricData={cached.isHistoricData}
+          isBeta={profile?.is_beta ?? false}
         />
       </Suspense>
     )
@@ -153,7 +154,7 @@ export default async function DashboardPage() {
 
     supabase
       .from('profiles')
-      .select('subscription_status, trial_ends_at, full_name')
+      .select('subscription_status, trial_ends_at, full_name, is_beta')
       .eq('id', user.id)
       .single(),
 
@@ -524,6 +525,7 @@ export default async function DashboardPage() {
         isPro={isPro}
         activeMonthLabel={activeMonthLabel}
         isHistoricData={isHistoricData}
+        isBeta={profile?.is_beta ?? false}
       />
     </Suspense>
   )

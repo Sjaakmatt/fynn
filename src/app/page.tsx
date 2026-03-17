@@ -484,21 +484,21 @@ export default function LandingPage() {
   })
 
   return (
-    <div style={{ fontFamily: "'Sora', sans-serif", backgroundColor: 'var(--bg)', color: 'var(--text)', minHeight: '100vh', overflow: 'hidden' }}>
+    <div style={{ fontFamily: "'Sora', sans-serif", backgroundColor: 'var(--bg)', color: 'var(--text)', minHeight: '100vh', overflowX: 'hidden' }}>
 
       {/* ═══════════════ NAV ═══════════════ */}
       <nav style={{
-        position: 'sticky', top: 0, zIndex: 50,
+        position: 'fixed', width: '100%', top: 0, zIndex: 50,
         backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
         backgroundColor: 'color-mix(in srgb, var(--bg) 85%, transparent)',
         borderBottom: '1px solid var(--border)',
       }}>
         <div style={{ maxWidth: 1120, margin: '0 auto', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: 'white' }}>F</span>
-            </div>
-            <span style={{ fontWeight: 700, fontSize: 18, letterSpacing: '-0.5px' }}>Fynn</span>
+            <>
+              <img src="/logo-light.png" alt="Fynn" className="logo-light" style={{ height: 40, width: 'auto' }} />
+              <img src="/logo.png" alt="Fynn" className="logo-dark" style={{ height: 40, width: 'auto' }} />
+            </>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <ThemeToggle />

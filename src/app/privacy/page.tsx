@@ -34,7 +34,7 @@ export default function PrivacyPage() {
         {/* Header */}
         <div className="mb-10">
           <p className="text-xs uppercase tracking-wider mb-2" style={{ color: 'var(--brand)' }}>
-            Versie 1.0 — {new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}
+            Versie 1.1 — {new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}
           </p>
           <h1 className="text-2xl font-semibold mb-3" style={{ color: 'var(--text)' }}>Privacyverklaring</h1>
           <p className="text-sm" style={{ color: 'var(--muted)' }}>
@@ -54,7 +54,7 @@ export default function PrivacyPage() {
               <p>Website: <a href="https://www.meetfynn.nl" className="underline" style={{ color: 'var(--brand)' }}>www.meetfynn.nl</a></p>
             </div>
             <p className="mt-3">
-              Fynn is een AI-gestuurde persoonlijke financiële coach die via een PSD2-koppeling inzicht geeft in jouw bankrekeningen en uitgavenpatronen. Wij verwerken persoonsgegevens uitsluitend voor de doeleinden zoals beschreven in deze privacyverklaring.
+              Fynn is een AI-gestuurde persoonlijke financiële coach die via een PSD2-koppeling of handmatige import inzicht geeft in jouw bankrekeningen en uitgavenpatronen. Wij verwerken persoonsgegevens uitsluitend voor de doeleinden zoals beschreven in deze privacyverklaring.
             </p>
           </Section>
 
@@ -67,7 +67,9 @@ export default function PrivacyPage() {
                 <li>Wachtwoord (versleuteld — nooit leesbaar voor ons)</li>
               </ul>
             </SubSection>
-            <SubSection title="2.2 Bankgegevens via PSD2">
+            <SubSection title="2.2 Bankgegevens">
+              <p className="mb-2">Fynn biedt twee manieren om jouw transactiegegevens te verwerken:</p>
+              <p className="mb-2"><strong style={{ color: 'var(--text)' }}>Optie A — Automatische koppeling via PSD2 (Plaid)</strong></p>
               <p className="mb-2">Via de PSD2-koppeling ontvangen wij uitsluitend <strong>leestoegang</strong> tot:</p>
               <ul className="list-disc list-inside space-y-1">
                 <li>Rekeningnummer(s) (IBAN)</li>
@@ -85,6 +87,8 @@ export default function PrivacyPage() {
                 </svg>
                 <span style={{ color: 'var(--text)' }}>Wij hebben nooit schrijftoegang tot jouw bankrekening. We kunnen geen betalingen initiëren.</span>
               </div>
+              <p className="mt-4 mb-2"><strong style={{ color: 'var(--text)' }}>Optie B — Handmatige import (CSV-upload)</strong></p>
+              <p>Je kunt ook zelf een transactiebestand (CSV) uploaden dat je downloadt vanuit je eigen bankomgeving. Bij handmatige import wordt er geen verbinding gemaakt met een externe bankdienst — de gegevens worden uitsluitend lokaal verwerkt en opgeslagen in jouw Fynn-account.</p>
             </SubSection>
             <SubSection title="2.3 Gebruiksgegevens">
               <ul className="list-disc list-inside space-y-1">
@@ -131,12 +135,13 @@ export default function PrivacyPage() {
                 </thead>
                 <tbody>
                   {[
-                    ['Transactiegegevens', '12 maanden na ophalen'],
+                    ['Transactiegegevens (PSD2)', '12 maanden na ophalen'],
+                    ['Transactiegegevens (CSV-upload)', '12 maanden na uploaden'],
                     ['Accountgegevens', 'Zolang account actief is'],
                     ['AI-briefings en adviezen', '12 maanden'],
                     ['Spaardoelen en notities', 'Tot verwijdering door gebruiker'],
                     ['Betalingsgegevens', '7 jaar (wettelijke bewaarplicht)'],
-                  ].map(([cat, term], i, arr) => (
+                  ].map(([cat, term]) => (
                     <tr
                       key={cat}
                       style={{ borderTop: '1px solid var(--border)' }}
@@ -156,15 +161,15 @@ export default function PrivacyPage() {
             <SubSection title="6.1 Verwerkers binnen de EU">
               <ul className="list-disc list-inside space-y-1">
                 <li><strong>Supabase</strong> — database en authenticatie (EU-regio, Frankfurt)</li>
-                <li><strong>Stripe Financial Connections</strong> — PSD2/open banking koppeling, onderdeel van Stripe, Inc. (zie 6.2)</li>
                 <li><strong>Vercel</strong> — hosting (EU-regio)</li>
               </ul>
             </SubSection>
             <SubSection title="6.2 Verwerkers buiten de EU">
-              <p className="mb-2">Voor AI-coachingfunctionaliteit (briefings, adviezen, chatberichten) gebruiken wij:</p>
+              <p className="mb-2">Voor bepaalde functionaliteit maken wij gebruik van verwerkers buiten de EU:</p>
               <ul className="list-disc list-inside space-y-1">
-                <li><strong>Anthropic, PBC</strong> (Claude API) — VS, doorgifte via Standard Contractual Clauses (SCC)</li>
-                <li><strong>Stripe, Inc.</strong> — betalingsverwerking én open banking koppeling (Stripe Financial Connections), VS, doorgifte via SCC</li>
+                <li><strong>Plaid, Inc.</strong> — PSD2/open banking koppeling, VS, doorgifte via Standard Contractual Clauses (SCC). Plaid wordt uitsluitend gebruikt wanneer je kiest voor automatische bankkoppeling. Bij handmatige CSV-upload worden geen gegevens gedeeld met Plaid.</li>
+                <li><strong>Anthropic, PBC</strong> (Claude API) — AI-coachingfunctionaliteit (briefings, adviezen, chatberichten), VS, doorgifte via SCC</li>
+                <li><strong>Stripe, Inc.</strong> — betalingsverwerking, VS, doorgifte via SCC</li>
               </ul>
               <div
                 className="mt-3 p-3 rounded-xl text-sm"
@@ -182,6 +187,7 @@ export default function PrivacyPage() {
               <li>Versleutelde opslag van inloggegevens</li>
               <li>Row Level Security in onze database — jij hebt alleen toegang tot jouw eigen gegevens</li>
               <li>PSD2-koppeling is uitsluitend leestoegang — nooit schrijftoegang</li>
+              <li>Handmatig geüploade bestanden worden na verwerking niet bewaard in hun oorspronkelijke vorm — alleen de verwerkte transactiegegevens worden opgeslagen</li>
               <li>Toegangsbeperking tot persoonsgegevens voor geautoriseerde medewerkers</li>
             </ul>
           </Section>

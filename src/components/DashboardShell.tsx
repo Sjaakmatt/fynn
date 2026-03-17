@@ -61,12 +61,13 @@ interface Props {
   isHistoricData?: boolean
   pendingItems?: { description: string; amount: number; category: string; day_of_month: number }[]
   variabelPerCategorie?: Record<string, { budget: number; gespendeerd: number; resterend: number }>
+  isBeta: boolean
 }
 
 export default function DashboardShell({
   user, accounts, stats, sortedCategories, briefing,
   transactionCount, subscriptionStatus, trialEndsAt, isPro,
-  activeMonthLabel, isHistoricData, variabelPerCategorie,
+  activeMonthLabel, isHistoricData, variabelPerCategorie, isBeta,
 }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -116,13 +117,12 @@ export default function DashboardShell({
         {/* Nav */}
         <nav className="sticky top-0 z-20 border-b transition-colors"
           style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}>
-          <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="max-w-2xl mx-auto px-4 py-1 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center"
-                style={{ backgroundColor: 'var(--brand)' }}>
-                <span className="text-white text-xs font-bold">F</span>
-              </div>
-              <span className="font-semibold" style={{ color: 'var(--text)' }}>Fynn</span>
+              <>
+                <img src="/logo-light.png" alt="Fynn" className="logo-light" style={{ height: 32, width: 'auto' }} />
+                <img src="/logo.png" alt="Fynn" className="logo-dark" style={{ height: 32, width: 'auto' }} />
+              </>
             </div>
             <div className="flex items-center gap-2">
               {hasData && (
@@ -199,6 +199,7 @@ export default function DashboardShell({
           <SubscriptionBanner
             status={subscriptionStatus}
             trialEndsAt={trialEndsAt}
+            isBeta={isBeta}
           />
 
           {/* OVERZICHT TAB */}

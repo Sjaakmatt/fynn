@@ -8,6 +8,7 @@ import ThemeToggle from './ThemeToggle'
 import MFASettings from './mfa/Mfasettings'
 import TransactionUpload from './TransactionUpload'
 import BankConnectModal from './BankConnectModal'
+import SubscriptionBanner from './checkout/SubscriptionBanner'
 
 interface Props {
   user: {
@@ -19,6 +20,7 @@ interface Props {
     status: string | null
     trialEndsAt: string | null
     hasStripe: boolean
+    isBeta: boolean
   }
   accounts: {
     id: string
@@ -211,41 +213,13 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
         </Card>
 
         {/* ── Abonnement ─────────────────────────────────────────── */}
-        <Card>
-          <Row
-            icon={<CreditCardIcon />}
-            label={
-              subscription.status === 'active' ? 'Fynn Pro'
-              : subscription.status === 'trialing' ? 'Fynn Pro (Trial)'
-              : 'Fynn Free'
-            }
-            sublabel={
-              subscription.status === 'active' ? '€12,99/maand'
-              : subscription.status === 'trialing' ? 'Trial actief'
-              : 'Beperkte functies'
-            }
-            action={
-              subscription.hasStripe ? (
-                <button
-                  onClick={handleManageSubscription}
-                  disabled={portalLoading}
-                  className="px-3 py-1.5 text-xs rounded-xl transition-opacity disabled:opacity-30"
-                  style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--text)', border: '1px solid var(--border)' }}
-                >
-                  {portalLoading ? '…' : 'Beheren'}
-                </button>
-              ) : (
-                <button
-                  onClick={() => router.push('/pricing')}
-                  className="px-3 py-1.5 text-xs font-semibold text-white rounded-xl transition-opacity hover:opacity-90"
-                  style={{ backgroundColor: 'var(--brand)' }}
-                >
-                  Upgraden
-                </button>
-              )
-            }
+        <Section label="Abonnement">
+          <SubscriptionBanner
+            status={subscription.status}
+            trialEndsAt={subscription.trialEndsAt}
+            isBeta={subscription.isBeta}
           />
-        </Card>
+        </Section>
 
         {/* ── Beveiliging ────────────────────────────────────────── */}
         <Section label="Beveiliging">

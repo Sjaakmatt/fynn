@@ -198,15 +198,8 @@ function SyncContent() {
 
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: '48px' }}>
-          <div style={{
-            width: '52px', height: '52px',
-            backgroundColor: '#1a5c3a',
-            borderRadius: '16px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 16px',
-            boxShadow: '0 0 40px rgba(74,222,128,0.2)',
-          }}>
-            <span style={{ color: 'white', fontWeight: 600, fontSize: '22px' }}>F</span>
+          <div style={{ margin: '0 auto 16px', display: 'flex', justifyContent: 'center' }}>
+            <img src="/logo.png" alt="Fynn" style={{ height: 48, width: 'auto' }} />
           </div>
 
           {done ? (

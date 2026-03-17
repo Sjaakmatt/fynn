@@ -11,7 +11,7 @@ export default async function AccountPage() {
   const [{ data: profile }, { data: accounts }] = await Promise.all([
     supabase
       .from('profiles')
-      .select('full_name, subscription_status, trial_ends_at, stripe_customer_id')
+      .select('full_name, subscription_status, trial_ends_at, stripe_customer_id, is_beta')
       .eq('id', user.id)
       .single(),
     supabase
@@ -32,6 +32,7 @@ export default async function AccountPage() {
         status: profile?.subscription_status ?? null,
         trialEndsAt: profile?.trial_ends_at ?? null,
         hasStripe: !!profile?.stripe_customer_id,
+        isBeta: profile?.is_beta ?? false,
       }}
       accounts={accounts ?? []}
     />

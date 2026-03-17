@@ -308,7 +308,7 @@ function PaymentForm({
     }
 
     if (subscriptionId) {
-      await fetch('/api/stripe/confirm', {
+      await fetch('/api/stripe/confirm-subscription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subscriptionId }),

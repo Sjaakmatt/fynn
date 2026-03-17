@@ -81,7 +81,7 @@ export default function CategoryBreakdown({ sortedCategories: initialCategories,
     if (selectedMonth === currentMonth) {
       setCategories(initialCategories)
       setTotalUitgaven(initialTotal)
-      return
+      return // ← stop hier voor huidige maand
     }
 
     setLoadingMonth(true)
@@ -96,7 +96,7 @@ export default function CategoryBreakdown({ sortedCategories: initialCategories,
         setLoadingMonth(false)
       })
       .catch(() => setLoadingMonth(false))
-  }, [selectedMonth])
+  }, [selectedMonth, initialCategories, initialTotal])
 
   async function toggleCategory(cat: string) {
     if (expanded === cat) {
@@ -127,25 +127,28 @@ export default function CategoryBreakdown({ sortedCategories: initialCategories,
     })
 
     if (res.ok) {
+      // Clear cache voor beide categories
       setTransactions(prev => {
         const updated = { ...prev }
-        if (updated[cacheKey]) {
-          updated[cacheKey] = updated[cacheKey].filter(t => t.id !== transactionId)
-        }
-        if (updated[newCacheKey]) {
-          const tx = prev[cacheKey]?.find(t => t.id === transactionId)
-          if (tx) {
-            updated[newCacheKey] = [...updated[newCacheKey], { ...tx, category: newCategory }]
-              .sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime())
-          }
-        }
+        delete updated[cacheKey]
+        delete updated[newCacheKey]
         return updated
       })
+
+      // Refetch transacties voor de category die nog open staat
+      if (expanded === oldCategory) {
+        setLoadingTx(oldCategory)
+        const txRes = await fetch(`/api/transactions?category=${encodeURIComponent(oldCategory)}&month=${selectedMonth}`)
+        const txData = await txRes.json()
+        setTransactions(prev => ({ ...prev, [cacheKey]: txData.transactions ?? [] }))
+        setLoadingTx(null)
+      }
+
+      router.refresh()
+      window.dispatchEvent(new CustomEvent('transactionUpdated'))
     }
 
     setUpdating(null)
-    router.refresh()
-    window.dispatchEvent(new CustomEvent('transactionUpdated'))
   }
 
   const selectedLabel = monthOptions.find(m => m.value === selectedMonth)?.label ?? selectedMonth

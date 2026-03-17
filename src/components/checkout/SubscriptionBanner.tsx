@@ -7,10 +7,10 @@ import CheckoutModal from './CheckoutModal'
 interface Props {
   status: string | null
   trialEndsAt: string | null
-  isBeta?: boolean
+  isBeta: boolean
 }
 
-export default function SubscriptionBanner({ status, trialEndsAt, isBeta = false }: Props) {
+export default function SubscriptionBanner({ status, trialEndsAt, isBeta }: Props) {
   const [modalOpen, setModalOpen] = useState(false)
   const [loading, setLoading] = useState(false)
 

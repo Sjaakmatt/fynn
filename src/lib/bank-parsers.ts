@@ -188,8 +188,10 @@ function cleanDescription(desc: string): string {
 }
 
 /** Create a deterministic external_id for deduplication */
-function makeExternalId(bank: string, accountNumber: string, date: string, amount: number, index: number, extra?: string): string {
-  const base = `${bank}_${accountNumber}_${date}_${amount}_${index}`
+function makeExternalId(bank: string, accountNumber: string, date: string, amount: number, index: number, extra?: string, userId?: string): string {
+  const base = userId 
+    ? `${userId}_${bank}_${accountNumber}_${date}_${amount}_${index}`
+    : `${bank}_${accountNumber}_${date}_${amount}_${index}`
   return extra ? `${base}_${extra}` : base
 }
 

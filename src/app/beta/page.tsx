@@ -117,13 +117,25 @@ function FaqItem({ q, a }: { q: string; a: string }) {
   )
 }
 
-function SpotsLeft({ total = 100, taken = 0 }: { total?: number; taken?: number }) {
+function SpotsLeft({ total = 150, offset = 23 }: { total?: number; offset?: number }) {
+  const [taken, setTaken] = useState(offset)
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/beta/count')
+      .then(r => r.json())
+      .then(data => { setTaken((data.count ?? 0) + offset); setLoaded(true) })
+      .catch(() => setLoaded(true))
+  }, [offset])
+
   const left = total - taken
   const pct = (taken / total) * 100
+
   return (
     <div style={{
       padding: '16px 20px', borderRadius: 14,
       backgroundColor: 'var(--surface)', border: '1px solid var(--border)',
+      opacity: loaded ? 1 : 0.5, transition: 'opacity 0.3s',
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
         <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 600 }}>Beta plekken</span>
@@ -572,21 +584,21 @@ export default function BetaPage() {
   })
 
   return (
-    <div style={{ fontFamily: "'Sora', sans-serif", backgroundColor: 'var(--bg)', color: 'var(--text)', minHeight: '100vh', overflow: 'hidden' }}>
+    <div style={{ fontFamily: "'Sora', sans-serif", backgroundColor: 'var(--bg)', color: 'var(--text)', minHeight: '100vh', overflowX: 'hidden' }}>
 
       {/* ═══════════════ NAV ═══════════════ */}
       <nav style={{
-        position: 'sticky', top: 0, zIndex: 50,
+        position: 'fixed', width: '100%', top: 0, zIndex: 50,
         backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
         backgroundColor: 'color-mix(in srgb, var(--bg) 85%, transparent)',
         borderBottom: '1px solid var(--border)',
       }}>
         <div style={{ maxWidth: 1120, margin: '0 auto', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px' }}>
           <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'var(--text)' }}>
-            <div style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: 'white' }}>F</span>
-            </div>
-            <span style={{ fontWeight: 700, fontSize: 18, letterSpacing: '-0.5px' }}>Fynn</span>
+            <>
+              <img src="/logo-light.png" alt="Fynn" className="logo-light" style={{ height: 40, width: 'auto' }} />
+              <img src="/logo.png" alt="Fynn" className="logo-dark" style={{ height: 40, width: 'auto' }} />
+            </>
           </Link>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <ThemeToggle />
@@ -643,7 +655,7 @@ export default function BetaPage() {
         <p style={{ ...stagger(4), fontSize: 13, color: 'var(--muted)', marginBottom: 40 }}>Geen creditcard nodig · Eerste 3 maanden gratis</p>
 
         <div style={stagger(5)}>
-          <SpotsLeft total={100} taken={0} />
+          <SpotsLeft/>
         </div>
       </section>
 
@@ -857,9 +869,7 @@ export default function BetaPage() {
       <footer style={{ padding: '28px 24px', borderTop: '1px solid var(--border)' }}>
         <div style={{ maxWidth: 1120, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 600, color: 'white' }}>F</div>
-            <span style={{ fontWeight: 700, fontSize: 14 }}>Fynn</span>
-            <span style={{ color: 'var(--muted)', fontSize: 13 }}>· Jouw financieel kompas</span>
+            <img src="/logo.png" alt="Fynn" style={{ height: 32, width: 'auto' }} />
           </div>
           <div style={{ display: 'flex', gap: 24 }}>
             <Link href="/privacy" style={{ color: 'var(--muted)', fontSize: 13, textDecoration: 'none' }}>Privacy</Link>

@@ -23,7 +23,7 @@ export default function TermsPage() {
             Algemene Voorwaarden
           </h1>
           <p className="text-xs" style={{ color: 'var(--muted)' }}>
-            Versie 1.0 — Laatst bijgewerkt: 1 maart 2026
+            Versie 1.1 — Laatst bijgewerkt: 17 maart 2026
           </p>
         </div>
 
@@ -33,7 +33,7 @@ export default function TermsPage() {
           <section>
             <p>
               Deze algemene voorwaarden zijn van toepassing op het gebruik van Fynn, een AI-ondersteunde
-              persoonlijke financiële coach aangeboden door <strong style={{ color: 'var(--text)' }}>Fynn B.V.</strong> (hierna: &quot;Fynn&quot;,
+              persoonlijke financiële coach aangeboden door <strong style={{ color: 'var(--text)' }}>ter Veld Holding B.V.</strong> (hierna: &quot;Fynn&quot;,
               &quot;wij&quot; of &quot;ons&quot;), gevestigd in Nederland. Door een account aan te maken
               en gebruik te maken van onze diensten, ga je akkoord met deze voorwaarden.
             </p>
@@ -44,7 +44,7 @@ export default function TermsPage() {
             <ul>
               <li><strong style={{ color: 'var(--text)' }}>Dienst:</strong> de Fynn-applicatie, inclusief alle functies zoals bankintegratie, AI-coaching, uitgavenanalyse en financiële inzichten.</li>
               <li><strong style={{ color: 'var(--text)' }}>Gebruiker:</strong> de natuurlijke persoon die een account aanmaakt en de Dienst gebruikt voor persoonlijk, niet-commercieel gebruik.</li>
-              <li><strong style={{ color: 'var(--text)' }}>Bankdata:</strong> transactiegegevens en rekeningsaldi die via PSD2-geautoriseerde open banking worden opgehaald bij jouw bank.</li>
+              <li><strong style={{ color: 'var(--text)' }}>Bankdata:</strong> transactiegegevens en rekeningsaldi die via PSD2-geautoriseerde open banking worden opgehaald bij jouw bank, of die je handmatig importeert via een CSV-bestand.</li>
               <li><strong style={{ color: 'var(--text)' }}>Abonnement:</strong> het betaalde toegangsrecht tot de volledige functionaliteit van de Dienst.</li>
             </ul>
           </Section>
@@ -63,18 +63,30 @@ export default function TermsPage() {
             </p>
           </Section>
 
-          <Section number="3" title="Toegang tot bankdata via PSD2">
+          <Section number="3" title="Toegang tot bankdata">
+            <p>
+              Fynn biedt twee manieren om jouw financiële gegevens te verwerken:
+            </p>
+            <p className="mt-2"><strong style={{ color: 'var(--text)' }}>Optie A — Automatische koppeling via PSD2</strong></p>
             <p>
               Fynn maakt gebruik van PSD2 (Payment Services Directive 2) om met jouw toestemming
-              toegang te krijgen tot jouw bankrekening(en). Dit gebeurt via een geregistreerde
+              toegang te krijgen tot jouw bankrekening(en). Dit gebeurt via Plaid, een geregistreerde
               Account Information Service Provider (AISP).
             </p>
             <ul>
               <li>Fynn heeft uitsluitend <strong style={{ color: 'var(--text)' }}>leestoegang</strong> tot je bankdata. Wij kunnen nooit betalingen initiëren of geld overmaken.</li>
-              <li>Toegang wordt verleend voor een periode van maximaal <strong style={{ color: 'var(--text)' }}>90 dagen</strong>, waarna je opnieuw toestemming geeft.</li>
+              <li>Toegang wordt verleend voor een periode van maximaal <strong style={{ color: 'var(--text)' }}>180 dagen</strong>, waarna je opnieuw toestemming geeft.</li>
               <li>Je kunt de koppeling op elk moment intrekken via de app of direct bij je bank.</li>
-              <li>Bankdata wordt verwerkt conform onze <a href="/privacy" style={{ color: 'var(--brand)' }}>Privacyverklaring</a> en de AVG/GDPR.</li>
             </ul>
+            <p className="mt-2"><strong style={{ color: 'var(--text)' }}>Optie B — Handmatige import (CSV-upload)</strong></p>
+            <p>
+              Je kunt ook zelf een transactiebestand (CSV) downloaden vanuit je bankomgeving en uploaden naar Fynn.
+              Bij deze methode wordt er geen verbinding gemaakt met een externe bankdienst. Jij behoudt volledige
+              controle over welke gegevens je deelt.
+            </p>
+            <p className="mt-2">
+              Bankdata wordt verwerkt conform onze <a href="/privacy" style={{ color: 'var(--brand)' }}>Privacyverklaring</a> en de AVG/GDPR.
+            </p>
           </Section>
 
           <Section number="4" title="Account en toegang">
@@ -102,6 +114,9 @@ export default function TermsPage() {
               <li><strong style={{ color: 'var(--text)' }}>Fynn Pro maandelijks:</strong> €12,99/maand, maandelijks opzegbaar.</li>
               <li><strong style={{ color: 'var(--text)' }}>Fynn Pro jaarlijks:</strong> €99/jaar, jaarlijks opzegbaar.</li>
             </ul>
+            <p>
+              Voor deelnemers aan het bètaprogramma kunnen afwijkende tarieven gelden. Deze worden bij aanmelding gecommuniceerd en blijven geldig zolang het abonnement actief is.
+            </p>
             <p>
               Betalingen worden verwerkt via Stripe. Abonnementen worden automatisch verlengd
               tenzij je minimaal <strong style={{ color: 'var(--text)' }}>24 uur voor het einde</strong> van de lopende periode opzegt.
@@ -141,7 +156,7 @@ export default function TermsPage() {
             </p>
             <ul>
               <li>Financiële beslissingen genomen op basis van inzichten of analyses van de Dienst.</li>
-              <li>Onvolledige of onjuiste bankdata aangeleverd door jouw bank.</li>
+              <li>Onvolledige of onjuiste bankdata aangeleverd door jouw bank of geüpload door jouzelf.</li>
               <li>Tijdelijke onbeschikbaarheid van de Dienst.</li>
               <li>Ongeautoriseerde toegang tot je account als gevolg van nalatigheid van jouw kant.</li>
             </ul>
@@ -154,7 +169,7 @@ export default function TermsPage() {
           <Section number="9" title="Intellectueel eigendom">
             <p>
               Alle rechten op de Dienst, inclusief software, ontwerp, teksten en AI-modellen,
-              berusten bij Fynn B.V. of haar licentiegevers. Jij behoudt alle rechten op je
+              berusten bij ter Veld Holding B.V. of haar licentiegevers. Jij behoudt alle rechten op je
               eigen financiële data.
             </p>
           </Section>
@@ -194,12 +209,12 @@ export default function TermsPage() {
           <Section number="13" title="Contact">
             <p>
               Heb je vragen over deze voorwaarden? Neem contact op via:{' '}
-              <a href="mailto:support@meetfynn.nl" style={{ color: 'var(--brand)' }}>support@meetfynn.nl</a>
+              <a href="mailto:info@meetfynn.com" style={{ color: 'var(--brand)' }}>info@meetfynn.com</a>
             </p>
             <p className="text-xs mt-4" style={{ color: 'var(--muted)' }}>
-              Fynn B.V.<br />
-              Nederland<br />
-              KVK: [in te vullen na inschrijving]
+              ter Veld Holding B.V.<br />
+              Julianastraat 15, 1616CH Hoogkarspel<br />
+              KVK: [in te vullen]
             </p>
           </Section>
 

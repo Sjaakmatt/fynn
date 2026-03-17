@@ -306,7 +306,7 @@ export async function POST(request: NextRequest) {
       .from('bank_accounts')
       .select('id')
       .eq('user_id', user.id)
-      .eq('external_id', `manual_${accountIban}`)
+      .eq('external_id', `manual_${user.id}_${accountIban}`)
       .maybeSingle()
 
     let accountId: string
@@ -329,7 +329,7 @@ export async function POST(request: NextRequest) {
           iban: result.accountNumber || null,
           currency: 'EUR',
           provider: 'manual_upload',
-          external_id: `manual_${accountIban}`,
+          external_id: `manual_${user.id}_${accountIban}`,
           balance: latestTxWithBalance?.balanceAfter || 0,
           account_type: 'CACC',
         })
@@ -357,7 +357,7 @@ export async function POST(request: NextRequest) {
       // Skip non-IBAN strings (e.g. raw account numbers like "104545003")
       if (!/^[A-Z]{2}\d{2}[A-Z]{4}\d{7,}$/i.test(iban)) continue
 
-      const externalId = `manual_${iban}`
+      const externalId = `manual_${user.id}_${iban}`
       const { data: existing } = await supabase
         .from('bank_accounts')
         .select('id, iban')
@@ -481,7 +481,7 @@ export async function POST(request: NextRequest) {
         merchant_name: merchantName,
         transaction_date: tx.date,
         provider: 'manual_upload',
-        external_id: makeExternalId(result.bank, accountIban, tx.date, tx.amount, i, tx.counterparty.slice(0, 20)),
+        external_id: makeExternalId(result.bank, accountIban, tx.date, tx.amount, i, tx.counterparty.slice(0, 20), user.id),
         category,
       }
     })
