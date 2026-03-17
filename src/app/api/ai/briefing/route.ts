@@ -1,4 +1,3 @@
-// src/app/api/ai/briefing/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
@@ -7,12 +6,16 @@ const client = new Anthropic();
 const PAGE_SIZE = 1000;
 const COOLDOWN_HOURS = 6;
 
+// Categorieën die NIET als uitgave tellen
+const EXCLUDE_FROM_SPENDING = ['inkomen', 'interne_overboeking', 'toeslagen', 'sparen'];
+
 type TxRow = {
   description: string | null;
   amount: string | number | null;
   category: string | null;
   transaction_date: string | null;
   merchant_name: string | null;
+  merchant_key: string | null;
 };
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -31,7 +34,17 @@ function dateRange(monthsBack: number): { from: string; to: string } {
   };
 }
 
-function analyzeTransactions(txs: TxRow[]) {
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function analyzeTransactions(
+  txs: TxRow[],
+  incomeKeys: Set<string>
+) {
   const uitgaven: Record<string, number> = {};
   let totaalUit = 0;
   let totaalIn = 0;
@@ -41,27 +54,35 @@ function analyzeTransactions(txs: TxRow[]) {
   for (const tx of txs) {
     const amount = Number(tx.amount ?? 0);
     if (!Number.isFinite(amount)) continue;
+    const cat = tx.category ?? "overig";
 
-    if (amount < 0) {
-      const cat = tx.category ?? "overig";
-      const abs = Math.abs(amount);
-      uitgaven[cat] = (uitgaven[cat] ?? 0) + abs;
-
-      if (cat === "sparen") {
-        spaarbedrag += abs;
-      } else {
-        totaalUit += abs;
-        // Track top merchants (excl. sparen)
-        const name = tx.merchant_name ?? tx.description ?? "onbekend";
-        merchants[name] = (merchants[name] ?? 0) + abs;
-      }
-    } else {
+    // Inkomen: alleen positieve bedragen van merchants met income_hint
+    if (amount > 0 && tx.merchant_key && incomeKeys.has(tx.merchant_key)) {
       totaalIn += amount;
+      continue;
     }
+
+    // Positieve bedragen die geen inkomen zijn → skip (retourbetalingen, Tikkie's)
+    if (amount >= 0) continue;
+
+    // Sparen apart tracken
+    if (cat === "sparen") {
+      spaarbedrag += Math.abs(amount);
+      continue;
+    }
+
+    // Uitgesloten categorieën skippen
+    if (EXCLUDE_FROM_SPENDING.includes(cat)) continue;
+
+    const abs = Math.abs(amount);
+    uitgaven[cat] = (uitgaven[cat] ?? 0) + abs;
+    totaalUit += abs;
+
+    const name = tx.merchant_name ?? tx.description ?? "onbekend";
+    merchants[name] = (merchants[name] ?? 0) + abs;
   }
 
   const topCategorieen = Object.entries(uitgaven)
-    .filter(([cat]) => cat !== "sparen")
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
 
@@ -92,9 +113,8 @@ async function fetchTransactions(
   while (true) {
     const { data, error } = await supabase
       .from("transactions")
-      .select("description, amount, category, transaction_date, merchant_name")
+      .select("description, amount, category, transaction_date, merchant_name, merchant_key")
       .eq("user_id", userId)
-      .not("category", "is", null)
       .gte("transaction_date", from)
       .lte("transaction_date", to)
       .order("transaction_date", { ascending: false })
@@ -107,6 +127,17 @@ async function fetchTransactions(
   }
 
   return all;
+}
+
+async function getIncomeKeys(
+  supabase: Awaited<ReturnType<typeof createClient>>
+): Promise<Set<string>> {
+  const { data } = await supabase
+    .from("merchant_map")
+    .select("merchant_key")
+    .eq("income_hint", true);
+
+  return new Set((data ?? []).map((r: any) => r.merchant_key as string));
 }
 
 // ── Route ───────────────────────────────────────────────────────
@@ -165,13 +196,16 @@ export async function POST(_request: NextRequest) {
       }
     }
 
-    // ── Fetch deze maand + vorige maand ───────────────────────
-    const dezeMaand = dateRange(0);
-    const vorigeMaand = dateRange(1);
+    // ── Fetch income keys + transacties ───────────────────────
+    const [incomeKeys, dezeMaandRange, vorigeMaandRange] = await Promise.all([
+      getIncomeKeys(supabase),
+      Promise.resolve(dateRange(0)),
+      Promise.resolve(dateRange(1)),
+    ]);
 
     const [txDezeMaand, txVorigeMaand] = await Promise.all([
-      fetchTransactions(supabase, user.id, dezeMaand.from, dezeMaand.to),
-      fetchTransactions(supabase, user.id, vorigeMaand.from, vorigeMaand.to),
+      fetchTransactions(supabase, user.id, dezeMaandRange.from, dezeMaandRange.to),
+      fetchTransactions(supabase, user.id, vorigeMaandRange.from, vorigeMaandRange.to),
     ]);
 
     if (txDezeMaand.length === 0) {
@@ -181,8 +215,8 @@ export async function POST(_request: NextRequest) {
       );
     }
 
-    const huidig = analyzeTransactions(txDezeMaand);
-    const vorig = analyzeTransactions(txVorigeMaand);
+    const huidig = analyzeTransactions(txDezeMaand, incomeKeys);
+    const vorig = analyzeTransactions(txVorigeMaand, incomeKeys);
 
     // ── Recurring kosten ophalen ──────────────────────────────
     const { data: recurring } = await supabase
@@ -193,7 +227,8 @@ export async function POST(_request: NextRequest) {
       .limit(20);
 
     const recurringList = (recurring ?? [])
-      .map((r) => `${r.merchant_name} (${r.category})`)
+      .filter((r: any) => !EXCLUDE_FROM_SPENDING.includes(r.category))
+      .map((r: any) => `${r.merchant_name} (${r.category})`)
       .join(", ");
 
     // ── Savings goal ──────────────────────────────────────────
@@ -230,13 +265,13 @@ Vergelijking met vorige maand:
 
 Schrijf een financiële briefing van maximaal 280 woorden op basis van deze data:
 
-Periode: lopende maand (${dezeMaand.from} t/m vandaag)
+Periode: lopende maand (${dezeMaandRange.from} t/m vandaag)
 Totaal uitgegeven (excl. sparen): €${huidig.totaalUit.toFixed(2)}
-Totaal inkomen: €${huidig.totaalIn.toFixed(2)}
+Totaal inkomen (salaris): €${huidig.totaalIn.toFixed(2)}
 Gespaard: €${huidig.spaarbedrag.toFixed(2)} (${huidig.spaarpct}% van inkomen)
 Aantal transacties: ${huidig.txCount}
 
-Top categorieën:
+Top categorieën (uitgaven):
 ${catLines}
 
 Grootste uitgaven (merchants):

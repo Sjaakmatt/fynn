@@ -1,12 +1,13 @@
-// src/app/api/ai/chat/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
 import { projectCashflow } from "@/lib/decision-engine";
 
 const client = new Anthropic();
-const MAX_HISTORY = 10; // max berichten in context
+const MAX_HISTORY = 10;
 const RATE_LIMIT_PER_HOUR = 30;
+
+const EXCLUDE_FROM_SPENDING = ['inkomen', 'interne_overboeking', 'toeslagen', 'sparen'];
 
 type TxRow = {
   description: string | null;
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ── Rate limiting (simple: count briefings in last hour) ──
+    // ── Rate limiting ─────────────────────────────────────────
     const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
     const { count } = await supabase
       .from("chat_messages")
@@ -68,6 +69,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ── Haal income keys op ───────────────────────────────────
+    const { data: incomeMap } = await supabase
+      .from("merchant_map")
+      .select("merchant_key")
+      .eq("income_hint", true);
+
+    const incomeKeys = new Set((incomeMap ?? []).map((r: any) => r.merchant_key as string));
+
     // ── Haal financiële data op (parallel) ────────────────────
     const dertigDagen = new Date();
     dertigDagen.setDate(dertigDagen.getDate() - 30);
@@ -75,19 +84,16 @@ export async function POST(request: NextRequest) {
 
     const [txResult, recurringResult, goalResult, projectionResult] =
       await Promise.allSettled([
-        // Recente transacties (100 is genoeg voor chat context)
         supabase
           .from("transactions")
           .select(
             "description, amount, category, transaction_date, merchant_name, merchant_key"
           )
           .eq("user_id", user.id)
-          .not("category", "is", null)
           .gte("transaction_date", fromDate)
           .order("transaction_date", { ascending: false })
           .limit(100),
 
-        // Recurring uit merchant_map (beter dan raw transacties)
         supabase
           .from("merchant_map")
           .select("merchant_key, merchant_name, category, confidence")
@@ -95,7 +101,6 @@ export async function POST(request: NextRequest) {
           .not("category", "is", null)
           .limit(30),
 
-        // Spaardoel
         supabase
           .from("savings_goals")
           .select("name, target_amount, current_amount")
@@ -103,7 +108,6 @@ export async function POST(request: NextRequest) {
           .limit(1)
           .maybeSingle(),
 
-        // Cashflow projectie
         projectCashflow(user.id, supabase),
       ]);
 
@@ -131,19 +135,26 @@ export async function POST(request: NextRequest) {
     for (const tx of transactions) {
       const amount = Number(tx.amount ?? 0);
       if (!Number.isFinite(amount)) continue;
+      const cat = tx.category ?? "overig";
 
-      if (amount < 0) {
-        const cat = tx.category ?? "overig";
-        const abs = Math.abs(amount);
-        uitgaven[cat] = (uitgaven[cat] ?? 0) + abs;
-        if (cat !== "sparen") totaalUit += abs;
-      } else {
+      // Inkomen: alleen positieve bedragen van income merchants
+      if (amount > 0 && tx.merchant_key && incomeKeys.has(tx.merchant_key)) {
         totaalIn += amount;
+        continue;
       }
+
+      // Positieve bedragen die geen inkomen zijn → skip
+      if (amount >= 0) continue;
+
+      // Uitgesloten categorieën skippen
+      if (EXCLUDE_FROM_SPENDING.includes(cat)) continue;
+
+      const abs = Math.abs(amount);
+      uitgaven[cat] = (uitgaven[cat] ?? 0) + abs;
+      totaalUit += abs;
     }
 
     const overzicht = Object.entries(uitgaven)
-      .filter(([cat]) => cat !== "sparen")
       .sort((a, b) => b[1] - a[1])
       .slice(0, 6)
       .map(([cat, total]) => `${cat}: €${total.toFixed(0)}`)
@@ -151,7 +162,8 @@ export async function POST(request: NextRequest) {
 
     // ── Abonnementen uit merchant_map ─────────────────────────
     const abonnementenLijst = recurring
-      .map((r) => `${r.merchant_name} (${r.category})`)
+      .filter((r: any) => !EXCLUDE_FROM_SPENDING.includes(r.category))
+      .map((r: any) => `${r.merchant_name} (${r.category})`)
       .join(", ");
 
     // ── Spaardoel context ─────────────────────────────────────
@@ -159,7 +171,7 @@ export async function POST(request: NextRequest) {
       ? `Spaardoel: "${goal.name}" — €${Number(goal.current_amount ?? 0).toFixed(0)} / €${Number(goal.target_amount).toFixed(0)}`
       : "Geen spaardoel ingesteld";
 
-    // ── Projection context (met fallback) ─────────────────────
+    // ── Projection context ────────────────────────────────────
     let projectionBlock: string;
     if (projection) {
       projectionBlock = `CASHFLOW PROJECTIE (gebruik dit voor "kan ik X betalen?" vragen):
@@ -176,7 +188,7 @@ export async function POST(request: NextRequest) {
     const systemPrompt = `Jij bent Fynn, een persoonlijke financiële coach. Je bent eerlijk, direct en warm — zoals een slimme vriend die toevallig alles van geld weet. Geen jargon, geen oordeel.
 
 FINANCIËLE DATA (afgelopen 30 dagen):
-Inkomen: €${totaalIn.toFixed(0)} | Uitgaven: €${totaalUit.toFixed(0)}
+Inkomen (salaris): €${totaalIn.toFixed(0)} | Uitgaven: €${totaalUit.toFixed(0)}
 Uitgaven per categorie: ${overzicht}
 Vaste lasten/abonnementen: ${abonnementenLijst || "geen data"}
 ${goalText}
@@ -206,7 +218,7 @@ REGELS:
 
     // ── Claude API call ───────────────────────────────────────
     const response = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-sonnet-4-20250514",
       max_tokens: 512,
       system: systemPrompt,
       messages,
@@ -215,7 +227,7 @@ REGELS:
     const reply =
       response.content[0].type === "text" ? response.content[0].text : "";
 
-   // ── Log chat message (voor rate limiting + analytics) ─────
+    // ── Log chat message ──────────────────────────────────────
     try {
       await supabase.from("chat_messages").insert({
         user_id: user.id,

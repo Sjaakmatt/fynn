@@ -1,4 +1,3 @@
-// src/components/OnboardingFlow.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -19,8 +18,6 @@ const PRO_FEATURES = [
   { icon: '📱', title: 'Abonnementenbeheer', desc: 'Zie precies wat je maandelijks betaalt' },
   { icon: '📡', title: 'Cashflow radar', desc: 'Voorspelling van je financiën de komende weken' },
 ]
-
-// ─── Method Toggle ───────────────────────────────────────────────────────────
 
 function MethodToggle({
   method,
@@ -69,8 +66,6 @@ function MethodToggle({
   )
 }
 
-// ─── Main Component ──────────────────────────────────────────────────────────
-
 export default function OnboardingFlow({ userId, isPro }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -78,7 +73,6 @@ export default function OnboardingFlow({ userId, isPro }: Props) {
   const [activeFeature, setActiveFeature] = useState(0)
   const [method, setMethod] = useState<'plaid' | 'upload'>('plaid')
 
-  // Na bank connect: refresh server data en verwijder param uit URL
   useEffect(() => {
     if (searchParams.get('connected') === 'true') {
       router.replace('/dashboard')
@@ -96,7 +90,6 @@ export default function OnboardingFlow({ userId, isPro }: Props) {
       <div className="rounded-2xl overflow-hidden"
         style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
 
-        {/* Header */}
         <div className="px-6 pt-8 pb-6 text-center border-b" style={{ borderColor: 'var(--border)' }}>
           <div className="w-14 h-14 rounded-2xl mx-auto mb-4 flex items-center justify-center text-2xl"
             style={{ backgroundColor: 'var(--brand)' }}>
@@ -110,7 +103,6 @@ export default function OnboardingFlow({ userId, isPro }: Props) {
           </p>
         </div>
 
-        {/* Stappen */}
         <div className="px-6 py-5 space-y-3">
           {[
             { n: 1, title: 'Bankrekening koppelen', desc: 'Automatisch via Plaid of upload je bankexport' },
@@ -130,22 +122,16 @@ export default function OnboardingFlow({ userId, isPro }: Props) {
           ))}
         </div>
 
-        {/* Bank selectie */}
         <div className="px-6 pb-6 space-y-4">
           <MethodToggle method={method} onChange={setMethod} variant="light" />
 
           {method === 'plaid' && (
-            <div className="space-y-3">
-              <PlaidLinkButton
-                className="w-full py-3.5 rounded-xl text-sm font-semibold transition-all text-center"
-                style={{ backgroundColor: 'var(--brand)', color: 'white' }}
-              >
-                🏦 Bank koppelen
-              </PlaidLinkButton>
-              <p className="text-center text-xs" style={{ color: 'var(--muted)' }}>
-                🔒 Beveiligd via Plaid · Alleen leestoegang · Nooit schrijftoegang
-              </p>
-            </div>
+            <PlaidLinkButton
+              className="w-full py-3.5 rounded-xl text-sm font-semibold transition-all text-center"
+              style={{ backgroundColor: 'var(--brand)', color: 'white' }}
+            >
+              🏦 Bank koppelen
+            </PlaidLinkButton>
           )}
 
           {method === 'upload' && (
@@ -156,7 +142,6 @@ export default function OnboardingFlow({ userId, isPro }: Props) {
           )}
         </div>
 
-        {/* Upgrade nudge */}
         <div className="px-6 py-4 border-t" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--tab-bg)' }}>
           <p className="text-xs text-center" style={{ color: 'var(--muted)' }}>
             Wil je briefings, een AI coach en budgetplanner?{' '}
@@ -175,7 +160,6 @@ export default function OnboardingFlow({ userId, isPro }: Props) {
       <div className="rounded-2xl overflow-hidden text-white" style={{ backgroundColor: 'var(--brand)' }}>
         <div className="px-6 py-8">
 
-          {/* Header */}
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
               <span className="text-white font-bold">F</span>
@@ -186,7 +170,6 @@ export default function OnboardingFlow({ userId, isPro }: Props) {
             </div>
           </div>
 
-          {/* Progress */}
           <div className="flex items-center gap-2 mb-6">
             {[1, 2, 3].map(n => (
               <div key={n} className="flex items-center gap-2">
@@ -203,7 +186,6 @@ export default function OnboardingFlow({ userId, isPro }: Props) {
             ))}
           </div>
 
-          {/* Stap 1 — bank koppelen */}
           {step === 1 && (
             <div>
               <h2 className="text-2xl font-bold mb-2">Stap 1 — Bankrekening koppelen</h2>
@@ -215,17 +197,12 @@ export default function OnboardingFlow({ userId, isPro }: Props) {
 
               <div className="mt-4">
                 {method === 'plaid' && (
-                  <div className="space-y-3">
-                    <PlaidLinkButton
-                      className="w-full py-3 rounded-xl font-semibold text-sm transition-all text-center"
-                      style={{ backgroundColor: 'white', color: 'var(--brand)' }}
-                    >
-                      🏦 Bank koppelen
-                    </PlaidLinkButton>
-                    <p className="text-xs opacity-60 text-center">
-                      🔒 Alleen leestoegang · Nooit schrijftoegang · Nooit toegang tot je geld
-                    </p>
-                  </div>
+                  <PlaidLinkButton
+                    className="w-full py-3 rounded-xl font-semibold text-sm transition-all text-center"
+                    style={{ backgroundColor: 'white', color: 'var(--brand)' }}
+                  >
+                    🏦 Bank koppelen
+                  </PlaidLinkButton>
                 )}
 
                 {method === 'upload' && (
@@ -240,7 +217,6 @@ export default function OnboardingFlow({ userId, isPro }: Props) {
             </div>
           )}
 
-          {/* Stap 2 — features */}
           {step === 2 && (
             <div>
               <h2 className="text-2xl font-bold mb-2">Stap 2 — Wat kan Fynn voor jou doen?</h2>
@@ -275,7 +251,6 @@ export default function OnboardingFlow({ userId, isPro }: Props) {
             </div>
           )}
 
-          {/* Stap 3 — activeren */}
           {step === 3 && (
             <div>
               <h2 className="text-2xl font-bold mb-2">Stap 3 — Klaar om te beginnen</h2>
@@ -318,7 +293,6 @@ export default function OnboardingFlow({ userId, isPro }: Props) {
           )}
         </div>
 
-        {/* Skip naar features (stap 1 only) */}
         {step === 1 && (
           <div className="px-6 pb-4 flex justify-end">
             <button onClick={() => setStep(2)}

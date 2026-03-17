@@ -90,10 +90,10 @@ export default function MFASettings() {
       className="rounded-2xl p-5"
       style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
     >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
           <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center"
+            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
             style={{
               backgroundColor: hasMFA
                 ? 'color-mix(in srgb, var(--brand) 10%, transparent)'
@@ -104,7 +104,7 @@ export default function MFASettings() {
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
             </svg>
           </div>
-          <div>
+          <div className="min-w-0">
             <h3 className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
               Tweestapsverificatie (2FA)
             </h3>
@@ -116,7 +116,7 @@ export default function MFASettings() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0 ml-13 sm:ml-0">
           {hasMFA ? (
             <>
               <span

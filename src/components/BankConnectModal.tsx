@@ -1,4 +1,3 @@
-// src/components/BankConnectModal.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -26,7 +25,6 @@ const NL_BE_BANKS = [
 
 interface Props {
   onClose: () => void
-  /** Start directly on the upload tab */
   defaultTab?: 'connect' | 'upload'
 }
 
@@ -40,13 +38,11 @@ export default function BankConnectModal({ onClose, defaultTab = 'connect' }: Pr
 
   useEffect(() => { setMounted(true) }, [])
 
-  // Scroll lock
   useEffect(() => {
     document.body.style.overflow = 'hidden'
     return () => { document.body.style.overflow = '' }
   }, [])
 
-  // Escape handler
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
@@ -73,12 +69,10 @@ export default function BankConnectModal({ onClose, defaultTab = 'connect' }: Pr
         style={{ backgroundColor: 'var(--bg)', maxHeight: '92vh' }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Handle — mobiel only */}
         <div className="sm:hidden flex justify-center pt-3">
           <div className="w-10 h-1 rounded-full" style={{ backgroundColor: 'var(--border)' }} />
         </div>
 
-        {/* Header */}
         <div className="px-6 pt-5 pb-4 flex items-start justify-between">
           <div>
             <p className="text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--muted)' }}>
@@ -93,7 +87,6 @@ export default function BankConnectModal({ onClose, defaultTab = 'connect' }: Pr
           </button>
         </div>
 
-        {/* Tab switcher */}
         <div className="px-6 pb-4">
           <div className="flex p-0.5 rounded-lg" style={{ backgroundColor: 'var(--tab-bg)' }}>
             <button
@@ -117,14 +110,11 @@ export default function BankConnectModal({ onClose, defaultTab = 'connect' }: Pr
           </div>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 pb-6">
 
-          {/* ── TAB: Automatic connection ── */}
           {tab === 'connect' && (
             <div className="space-y-4">
 
-              {/* Provider: Plaid */}
               {BANKING_PROVIDER === 'plaid' && (
                 <div className="space-y-5">
                   <p className="text-sm" style={{ color: 'var(--muted)' }}>
@@ -132,21 +122,16 @@ export default function BankConnectModal({ onClose, defaultTab = 'connect' }: Pr
                   </p>
                   <PlaidLinkButton
                     onSuccess={onClose}
-                    className="w-full py-3.5 rounded-xl text-sm font-semibold transition-all"
-                    style={{
-                      backgroundColor: 'var(--brand)',
-                      color: 'white',
-                    }}
+                    className="w-full py-3.5 rounded-xl text-sm font-semibold transition-all text-center"
+                    style={{ backgroundColor: 'var(--brand)', color: 'white' }}
                   >
                     Bank koppelen
                   </PlaidLinkButton>
                 </div>
               )}
 
-              {/* Provider: Enable Banking */}
               {BANKING_PROVIDER === 'enablebanking' && (
                 <>
-                  {/* Land filter */}
                   <div className="flex p-0.5 rounded-lg" style={{ backgroundColor: 'var(--tab-bg)' }}>
                     {(['NL', 'BE'] as const).map(c => (
                       <button key={c} onClick={() => setFilter(c)}
@@ -160,7 +145,6 @@ export default function BankConnectModal({ onClose, defaultTab = 'connect' }: Pr
                     ))}
                   </div>
 
-                  {/* Banken lijst */}
                   <div className="space-y-1.5">
                     {banks.map(bank => (
                       <button key={`${bank.name}-${bank.country}`}
@@ -191,7 +175,6 @@ export default function BankConnectModal({ onClose, defaultTab = 'connect' }: Pr
                     ))}
                   </div>
 
-                  {/* Security note */}
                   <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--tab-bg)' }}>
                     <p className="text-xs leading-relaxed" style={{ color: 'var(--muted)' }}>
                       🔒 Fynn leest alleen mee — we schrijven nooit naar je rekening. Beveiligd via PSD2, alleen lees-toegang.
@@ -200,7 +183,6 @@ export default function BankConnectModal({ onClose, defaultTab = 'connect' }: Pr
                 </>
               )}
 
-              {/* Switch to upload hint */}
               <button
                 onClick={() => setTab('upload')}
                 className="w-full text-center text-xs py-2 transition-opacity hover:opacity-80"
@@ -210,7 +192,6 @@ export default function BankConnectModal({ onClose, defaultTab = 'connect' }: Pr
             </div>
           )}
 
-          {/* ── TAB: Manual upload ── */}
           {tab === 'upload' && (
             <div className="space-y-4">
               <p className="text-xs" style={{ color: 'var(--muted)' }}>
@@ -223,7 +204,6 @@ export default function BankConnectModal({ onClose, defaultTab = 'connect' }: Pr
                 onComplete={onClose}
               />
 
-              {/* Switch to connect hint */}
               <button
                 onClick={() => setTab('connect')}
                 className="w-full text-center text-xs py-2 transition-opacity hover:opacity-80"

@@ -52,7 +52,7 @@ export default function CoachModal({ isPro }: Props) {
           onClick={() => setOpen(true)}
           className="fixed z-[100] flex items-center gap-2 px-4 py-3 rounded-2xl font-semibold text-sm text-white shadow-lg transition-all hover:scale-105 active:scale-95"
           style={{
-            bottom: 24,
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)',
             right: 20,
             backgroundColor: 'var(--brand)',
             boxShadow: '0 4px 24px rgba(26,58,42,0.5)',
@@ -81,9 +81,9 @@ export default function CoachModal({ isPro }: Props) {
             </div>
 
             {/* Header */}
-            <div className="px-6 pt-5 pb-4 flex items-center justify-between">
+            <div className="px-5 pt-5 pb-4 flex items-center justify-between gap-3">
               {/* Toggle */}
-              <div className="flex p-0.5 rounded-lg" style={{ backgroundColor: 'var(--tab-bg)' }}>
+              <div className="flex p-0.5 rounded-lg shrink-0" style={{ backgroundColor: 'var(--tab-bg)' }}>
                 {([
                   { value: 'coach' as const, label: '✦ Coach' },
                   { value: 'check' as const, label: '✓ Check' },
@@ -91,7 +91,7 @@ export default function CoachModal({ isPro }: Props) {
                   <button
                     key={opt.value}
                     onClick={() => setView(opt.value)}
-                    className="px-4 py-1.5 rounded-md text-sm font-medium transition-all"
+                    className="px-3 py-1.5 rounded-md text-sm font-medium transition-all"
                     style={{
                       backgroundColor: view === opt.value ? 'var(--tab-active)' : 'transparent',
                       color: view === opt.value ? 'var(--tab-active-text)' : 'var(--muted)',
@@ -104,8 +104,8 @@ export default function CoachModal({ isPro }: Props) {
 
               <button
                 onClick={() => setOpen(false)}
-                className="mt-1 text-lg leading-none"
-                style={{ color: 'var(--muted)' }}
+                className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+                style={{ backgroundColor: 'var(--tab-bg)', color: 'var(--muted)' }}
               >
                 ✕
               </button>

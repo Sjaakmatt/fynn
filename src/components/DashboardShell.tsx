@@ -11,7 +11,6 @@ import SubscriptionManager from './SubscriptionManager'
 import GenerateBriefingButton from './GenerateBriefingButton'
 import BudgetPlanner from './BudgetPlanner'
 import HealthScore from './HealthScore'
-import FinancialRadar from './FinancialRadar'
 import SubscriptionBanner from './checkout/SubscriptionBanner'
 import CategoryBreakdown from './CategoryBreakdown'
 import OnboardingFlow from './OnboardingFlow'
@@ -196,11 +195,13 @@ export default function DashboardShell({
             </div>
           )}
 
-          <SubscriptionBanner
-            status={subscriptionStatus}
-            trialEndsAt={trialEndsAt}
-            isBeta={isBeta}
-          />
+          {!isPro && (
+            <SubscriptionBanner
+              status={subscriptionStatus}
+              trialEndsAt={trialEndsAt}
+              isBeta={isBeta}
+            />
+          )}
 
           {/* OVERZICHT TAB */}
           {hasData && (

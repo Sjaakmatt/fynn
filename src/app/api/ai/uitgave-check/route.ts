@@ -1,4 +1,3 @@
-// src/app/api/ai/check/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
@@ -6,6 +5,8 @@ import { projectCashflow } from "@/lib/decision-engine";
 
 const client = new Anthropic();
 const RATE_LIMIT_PER_HOUR = 20;
+
+const EXCLUDE_FROM_SPENDING = ['inkomen', 'interne_overboeking', 'toeslagen', 'sparen'];
 
 export async function POST(request: NextRequest) {
   try {
@@ -83,12 +84,18 @@ Nog te betalen deze maand: €${projection.stillToPay.toFixed(0)}
 Salaris verwacht: dag ${projection.salaryDate} (over ${projection.daysUntilSalary} dagen)
 Risico: ${projection.riskLevel === "safe" ? "veilig" : projection.riskLevel === "caution" ? "let op" : "kritiek"}`;
     } else {
-      // Fallback op recente transacties
+      // Fallback: gebruik income_hint voor correct inkomen
+      const { data: incomeMap } = await supabase
+        .from("merchant_map")
+        .select("merchant_key")
+        .eq("income_hint", true);
+
+      const incomeKeys = new Set((incomeMap ?? []).map((r: any) => r.merchant_key as string));
+
       const { data: txs } = await supabase
         .from("transactions")
-        .select("amount, category")
+        .select("amount, category, merchant_key")
         .eq("user_id", user.id)
-        .not("category", "is", null)
         .gte(
           "transaction_date",
           new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
@@ -101,8 +108,15 @@ Risico: ${projection.riskLevel === "safe" ? "veilig" : projection.riskLevel === 
       for (const tx of txs ?? []) {
         const a = Number(tx.amount ?? 0);
         if (!Number.isFinite(a)) continue;
-        if (a < 0 && tx.category !== "sparen") totaalUit += Math.abs(a);
-        else if (a > 0) totaalIn += a;
+
+        if (a > 0 && tx.merchant_key && incomeKeys.has(tx.merchant_key)) {
+          totaalIn += a;
+        } else if (a < 0) {
+          const cat = tx.category ?? "overig";
+          if (!EXCLUDE_FROM_SPENDING.includes(cat)) {
+            totaalUit += Math.abs(a);
+          }
+        }
       }
 
       vrijRuimte = totaalIn - totaalUit;
@@ -136,7 +150,7 @@ REGELS:
 - Maximaal 80 woorden`;
 
     const message = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-sonnet-4-20250514",
       max_tokens: 256,
       messages: [{ role: "user", content: prompt }],
     });

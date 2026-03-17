@@ -507,7 +507,7 @@ function GoalDetail({
             )}
           </div>
 
-          <div style={{ height: 32 }} />
+          <div style={{ height: 100 }} />
         </div>
       </div>
     </div>,
