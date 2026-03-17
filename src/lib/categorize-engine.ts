@@ -1,6 +1,6 @@
 // src/lib/categorize-engine.ts
 // Rule-based transactie categorisatie — geen AI calls
-// Prioriteit: merchant_user_overrides > merchant_map.category > rules > 'overig'
+// Prioriteit: merchant_user_overrides > merchant_map.category > spaar-keywords > IBAN match > rules > 'overig'
 // Deterministisch, gratis, <1ms per transactie
 //
 // ⚠️  Ontworpen voor duizenden gebruikers — geen bias op individuele transactiedata.
@@ -19,6 +19,9 @@ export type Category =
   | 'kleding'
   | 'gezondheid'
   | 'entertainment'
+  | 'verzekering'
+  | 'kinderopvang'
+  | 'schulden'
   | 'sparen'
   | 'inkomen'
   | 'toeslagen'
@@ -75,6 +78,7 @@ const RULES: Rule[] = [
       'degiro', 'bux zero', 'peaks ', 'brand new day', 'meesman', 'binck', 'saxo',
       'beleggingsrekening', 'pensioenpremie', 'lijfrente', 'deposito',
       'northern trust', 'vanguard', 'indexfonds',
+      'kindertoekomst', 'groeirekening',
     ],
     category: 'sparen',
     amountCheck: (a) => a < 0,
@@ -316,6 +320,19 @@ const RULES: Rule[] = [
   },
 ]
 
+// ── SPAAR-KEYWORDS (voor pre-IBAN check) ───────────────────────
+// Als de merchant_name of description deze keywords bevat EN het bedrag
+// is negatief, dan is het sparen — ongeacht of de IBAN intern is.
+// Dit voorkomt dat "Direct Sparen" als interne_overboeking wordt gelabeld.
+
+const SAVINGS_KEYWORDS = [
+  'spaarrekening', 'spaartegoed', 'direct sparen', 'flexibel sparen',
+  'internetsparen', 'jongerengroeirekening', 'groeirekening',
+  'kindertoekomst', 'oranje spaarrekening', 'rabo sparen',
+]
+
+const NORMALIZED_SAVINGS_KEYWORDS = SAVINGS_KEYWORDS.map(k => normalize(k))
+
 // ── KEYWORD-BASED INTERNE OVERBOEKING DETECTIE (fallback) ──────
 
 const INTERNAL_TRANSFER_PATTERNS = [
@@ -378,6 +395,17 @@ export function isInternalTransfer(
   return normalizedUserIbans.includes(counterIban.replace(/\s/g, '').toUpperCase())
 }
 
+/**
+ * Checkt of een beschrijving of merchant_name spaar-keywords bevat.
+ * Gebruikt vóór IBAN-check om te voorkomen dat spaaroverboekingen
+ * als interne_overboeking gelabeld worden.
+ */
+function isSavingsTransaction(description: string, amount: number): boolean {
+  if (amount >= 0) return false // sparen is altijd geld dat weggaat
+  const normalized = normalize(description)
+  return NORMALIZED_SAVINGS_KEYWORDS.some(kw => normalized.includes(kw))
+}
+
 // ── NORMALISATIE ───────────────────────────────────────────────
 
 function normalize(text: string): string {
@@ -408,42 +436,55 @@ const NORMALIZED_TRANSFER_PATTERNS = INTERNAL_TRANSFER_PATTERNS.map(p => normali
  *
  * Prioriteit:
  * 1. merchantMapCategory (uit merchant_map.category of merchant_user_overrides)
- * 2. IBAN-based interne overboeking (als userIbans meegegeven)
- * 3. Keyword-based interne overboeking (fallback zonder IBANs)
- * 4. Rule-based matching op description
- * 5. 'overig' als fallback
+ * 2. Spaar-keyword detectie (wint van IBAN — "Direct Sparen" naar eigen IBAN = sparen, niet intern)
+ * 3. IBAN-based interne overboeking
+ * 4. Keyword-based interne overboeking (fallback zonder IBANs)
+ * 5. Rule-based matching op description
+ * 6. 'overig' als fallback
  *
- * @param description        - Transactie beschrijving
- * @param amount             - Bedrag (positief = bij, negatief = af)
+ * @param description         - Transactie beschrijving
+ * @param amount              - Bedrag (positief = bij, negatief = af)
  * @param merchantMapCategory - Categorie uit merchant_map of user override (optioneel)
- * @param userIbans          - Alle IBANs van de user (optioneel, voor IBAN-based detectie)
+ * @param userIbans           - Alle IBANs van de user (optioneel, voor IBAN-based detectie)
+ * @param merchantName        - Merchant naam (optioneel, voor spaar-keyword check op naam)
  */
 export function categorizeTransaction(
   description: string,
   amount: number,
   merchantMapCategory?: string | null,
   userIbans?: string[],
+  merchantName?: string | null,
 ): Category {
   // 1) merchant_map / user override heeft prioriteit
   if (merchantMapCategory && isValidCategory(merchantMapCategory)) {
     return merchantMapCategory as Category
   }
 
-  // 2) IBAN-based interne overboeking (meest betrouwbaar)
+  // 2) Spaar-keyword check — VÓÓR IBAN-detectie
+  //    Als de description of merchant_name spaar-keywords bevat en bedrag < 0,
+  //    dan is het sparen — ook al gaat het naar een eigen IBAN.
+  const textsToCheck = merchantName
+    ? `${description} ${merchantName}`
+    : description
+  if (isSavingsTransaction(textsToCheck, amount)) {
+    return 'sparen'
+  }
+
+  // 3) IBAN-based interne overboeking
   if (userIbans && userIbans.length > 0 && isInternalTransfer(description, userIbans)) {
     return 'interne_overboeking'
   }
 
   const normalized = normalize(description)
 
-  // 3) Keyword-based interne overboeking (fallback als geen IBANs beschikbaar)
+  // 4) Keyword-based interne overboeking (fallback als geen IBANs beschikbaar)
   for (const pattern of NORMALIZED_TRANSFER_PATTERNS) {
     if (normalized.includes(pattern)) {
       return 'interne_overboeking'
     }
   }
 
-  // 4) Rule-based (pre-normalized keywords)
+  // 5) Rule-based (pre-normalized keywords)
   for (const rule of NORMALIZED_RULES) {
     if (rule.amountCheck && !rule.amountCheck(amount)) continue
     for (const kw of rule.normalizedKeywords) {
@@ -466,19 +507,29 @@ export function categorizeTransactions(
     description: string
     amount: number
     merchantMapCategory?: string | null
+    merchantName?: string | null
   }[],
   userIbans?: string[],
 ): { id: string; category: Category }[] {
   return transactions.map(t => ({
     id: t.id,
-    category: categorizeTransaction(t.description, t.amount, t.merchantMapCategory, userIbans),
+    category: categorizeTransaction(
+      t.description,
+      t.amount,
+      t.merchantMapCategory,
+      userIbans,
+      t.merchantName,
+    ),
   }))
 }
+
+
 
 function isValidCategory(cat: string): boolean {
   const valid: Set<string> = new Set([
     'wonen', 'boodschappen', 'eten & drinken', 'transport',
     'abonnementen', 'kleding', 'gezondheid', 'entertainment',
+    'verzekering', 'kinderopvang', 'schulden',
     'sparen', 'inkomen', 'toeslagen', 'interne_overboeking', 'overig',
   ])
   return valid.has(cat)

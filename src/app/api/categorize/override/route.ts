@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { extractMerchant } from "@/lib/clean-description";
+import { invalidateDashboardCache } from '@/lib/dashboard-cache'
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -98,7 +99,9 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: ovErr.message }, { status: 500 });
       }
     }
-
+    
+    // Cache invalideren na categorie override
+    invalidateDashboardCache(supabase, user.id).catch(() => {})
     return NextResponse.json({ success: true, merchant_key: merchantKey });
   } catch (error) {
     console.error("[override] uncaught:", error);

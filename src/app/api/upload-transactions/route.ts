@@ -16,6 +16,8 @@ import { parseBankExport, makeExternalId, BANK_LABELS } from '@/lib/bank-parsers
 import type { BankId, ParsedTransaction } from '@/lib/bank-parsers'
 import { categorizeTransaction, isInternalTransfer, extractIbanFromDescription } from '@/lib/categorize-engine'
 import { extractMerchant } from '@/lib/clean-description'
+import { invalidateDashboardCache } from '@/lib/dashboard-cache'
+import { detectRecurring } from '@/lib/detect-recurring'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
 
@@ -425,10 +427,50 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Haal merchant_map categories op voor categorisatie bij insert
+    const { data: merchantMapRows } = await supabase
+      .from('merchant_map')
+      .select('merchant_key, category')
+ 
+    const globalCategories = new Map<string, string>()
+    for (const m of merchantMapRows ?? []) {
+      if (m.category) globalCategories.set(m.merchant_key, m.category)
+    }
+ 
+    // Haal user overrides op
+    const { data: userOverrideRows } = await supabase
+      .from('merchant_user_overrides')
+      .select('merchant_key, category')
+      .eq('user_id', user.id)
+ 
+    const userOverrideMap = new Map<string, string>()
+    for (const o of userOverrideRows ?? []) {
+      if (o.category) userOverrideMap.set(o.merchant_key, o.category)
+    }
+ 
     const txRows = result.transactions.map((tx: ParsedTransaction, i: number) => {
       // Extract merchant identity from description
       const { merchantKey, merchantName } = extractMerchant(tx.description, Math.abs(tx.amount))
-
+ 
+      // Categorisatie: user override > merchant_map > rule engine
+      const existingCategory = merchantKey
+        ? (userOverrideMap.get(merchantKey) ?? globalCategories.get(merchantKey) ?? null)
+        : null
+ 
+      // Let op: existingCategory die 'overig' is wordt niet meegegeven
+      // zodat de rule engine een betere match kan vinden
+      const merchantCat = existingCategory && existingCategory !== 'overig'
+        ? existingCategory
+        : null
+ 
+      const category = categorizeTransaction(
+        tx.description,
+        tx.amount,
+        merchantCat,
+        userIbans,
+        merchantName,
+      )
+ 
       return {
         user_id: user.id,
         account_id: accountId,
@@ -440,6 +482,7 @@ export async function POST(request: NextRequest) {
         transaction_date: tx.date,
         provider: 'manual_upload',
         external_id: makeExternalId(result.bank, accountIban, tx.date, tx.amount, i, tx.counterparty.slice(0, 20)),
+        category,
       }
     })
 
@@ -487,12 +530,14 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    for (const seed of merchantSeeds.slice(0, 300)) {
-      await supabase
+    if (merchantSeeds.length > 0) {
+      const { error: seedErr } = await supabase
         .from('merchant_map')
-        .upsert(seed, { onConflict: 'merchant_key', ignoreDuplicates: true })
-        .select()
-        .maybeSingle()
+        .upsert(
+          merchantSeeds.slice(0, 300),
+          { onConflict: 'merchant_key', ignoreDuplicates: true }
+        )
+      if (seedErr) console.warn('[Upload] merchant_map seed failed:', seedErr.message)
     }
 
     // Ensure income merchants have income_hint = true (even if they already existed)
@@ -512,13 +557,23 @@ export async function POST(request: NextRequest) {
     }
 
     // Trigger recurring detection (non-blocking)
+    // Post-process: recurring detect (direct function call)
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-      fetch(`${baseUrl}/api/recurring/detect`, {
-        method: 'POST',
-        headers: { 'Cookie': request.headers.get('cookie') ?? '' },
-      }).catch(() => {})
-    } catch {}
+      const recResult = await detectRecurring(supabase, user.id)
+      console.log(`[Upload] Recurring: ${recResult.updated}`)
+    } catch (e) {
+      console.warn('[Upload] Recurring detect mislukt (non-blocking):', e)
+    }
+
+    // Classificeer nieuwe uncategorized merchants via AI (fire-and-forget)
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+    fetch(`${baseUrl}/api/sync/classify-merchants`, {
+      method: 'POST',
+      headers: { Cookie: request.headers.get('cookie') ?? '' },
+    }).catch(() => {})
+
+    // Cache invalideren na import
+    invalidateDashboardCache(supabase, user.id).catch(() => {})
 
     return NextResponse.json({
       success: true,
@@ -529,7 +584,8 @@ export async function POST(request: NextRequest) {
       failed,
       accountId,
     })
-
+  
+    
   } catch (error) {
     console.error('[upload-transactions] Unexpected error:', error)
     return NextResponse.json({ error: 'Er ging iets mis bij het uploaden' }, { status: 500 })

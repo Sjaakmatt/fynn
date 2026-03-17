@@ -318,11 +318,27 @@ export async function GET(_request: NextRequest) {
         category === "intern"
       )
         continue;
+        
+
+      // Als user expliciet recurring_hint = false heeft gezet → altijd skippen
+      if (userOv?.recurring_hint === false) continue;
 
       const recurring =
         userOv?.recurring_hint ?? global?.recurring_hint ?? false;
       const quarterly = recurring ? false : group.quarterlyHint;
       const name = global?.merchant_name ?? group.name;
+
+      // Blacklist generieke merchant keys (ruis)
+      const BLACKLIST_KEYS = new Set([
+        'nl:mollie:payment', 'nl:payment', 'nl:unknown', 'nl:onbekend',
+      ])
+      if (BLACKLIST_KEYS.has(merchantKey)) continue
+
+      // Skip variabele winkel-categorieën (geen vaste lasten)
+      const VARIABLE_CATEGORIES = new Set([
+        'boodschappen', 'eten & drinken', 'kleding', 'entertainment',
+      ])
+      if (VARIABLE_CATEGORIES.has(category ?? '') && !recurring) continue
 
       // Must be recent enough
       const recentCutoff = quarterly
@@ -353,7 +369,7 @@ export async function GET(_request: NextRequest) {
         medianMonthly = computed.medianMonthly;
       }
 
-      const threshold = quarterly ? 0.55 : 0.65;
+      const threshold = quarterly ? 0.55 : 0.75;
       if (score < threshold && !recurring) continue;
 
       const amount =
@@ -402,7 +418,7 @@ export async function GET(_request: NextRequest) {
       accounts
         ?.filter(
           (a: any) =>
-            a.account_type === "CHECKING" || a.account_type === null
+            a.account_type === "CHECKING" || a.account_type === "CACC" || a.account_type === null
         )
         .reduce(
           (sum: number, a: any) => sum + (Number(a.balance) || 0),

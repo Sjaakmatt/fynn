@@ -19,8 +19,14 @@ const CATEGORY_ICONS: Record<string, string> = {
   entertainment: "🎬",
   sparen: "💰",
   beleggen: "📈",
+  verzekering: "🛡️",
+  kinderopvang: "👶",
+  schulden: "📋",
   overig: "📦",
 };
+
+// Categorieën die NOOIT als uitgave tellen in budget berekeningen
+const EXCLUDE_FROM_BUDGET = ['inkomen', 'interne_overboeking', 'toeslagen', 'sparen'];
 
 const MAX_MONTHS_DATA = 6;
 const MIN_SAVINGS_RATE = 0.1;
@@ -143,7 +149,6 @@ async function getRecurringFloorByCategory(
   >();
   for (const o of overrides ?? []) overrideMap.set(o.merchant_key, o);
 
-  // Map voor O(1) lookup
   const merchantMapByKey = new Map<string, { category: string }>();
   for (const m of merchantMap) {
     merchantMapByKey.set(m.merchant_key, { category: m.category });
@@ -157,7 +162,6 @@ async function getRecurringFloorByCategory(
 
   const cutoff = monthsAgoUTC(MAX_MONTHS_DATA);
 
-  // Pagineer transacties in batches van keys (Supabase .in() limiet)
   const txs: Array<{ merchant_key: string; amount: number; category: string }> = [];
   for (let i = 0; i < recurringKeys.length; i += PAGE_SIZE) {
     const keyBatch = recurringKeys.slice(i, i + PAGE_SIZE);
@@ -183,6 +187,8 @@ async function getRecurringFloorByCategory(
   const merchantAmounts = new Map<string, number[]>();
   for (const tx of txs) {
     if (!tx.merchant_key) continue;
+    // Filter uitgesloten categorieën
+    if (EXCLUDE_FROM_BUDGET.includes(tx.category)) continue;
     if (!merchantAmounts.has(tx.merchant_key))
       merchantAmounts.set(tx.merchant_key, []);
     merchantAmounts.get(tx.merchant_key)!.push(Math.abs(tx.amount));
@@ -194,14 +200,18 @@ async function getRecurringFloorByCategory(
     const override = overrideMap.get(key);
     const mapEntry = merchantMapByKey.get(key);
     const category = override?.category ?? mapEntry?.category ?? "overig";
-    if (category === "inkomen") continue;
+    // Dubbele check: skip uitgesloten categorieën
+    if (EXCLUDE_FROM_BUDGET.includes(category)) continue;
     result[category] = (result[category] ?? 0) + medianAmount;
   }
 
   return result;
 }
 
-/** Bereken mediaan uitgaven per categorie per maand over de laatste N maanden */
+/** Bereken mediaan uitgaven per categorie per maand over de laatste N maanden.
+ *  Outlier filtering: per categorie worden maanden die >2x de mediaan zijn
+ *  gedempt naar 2x mediaan. Dit voorkomt dat één dure maand het budget opblaast.
+ */
 async function getMedianSpendingByCategory(
   userId: string,
   supabase: SupabaseClient
@@ -216,7 +226,6 @@ async function getMedianSpendingByCategory(
       .lt("amount", 0)
       .gte("transaction_date", cutoff)
       .not("category", "is", null)
-      .not("category", "eq", "inkomen")
       .range(from, to)
   );
 
@@ -226,6 +235,7 @@ async function getMedianSpendingByCategory(
   for (const tx of txs) {
     const t = tx as any;
     const cat = (t.category ?? "overig") as string;
+    if (EXCLUDE_FROM_BUDGET.includes(cat)) continue;
     const monthKey = (t.transaction_date as string).slice(0, 7);
     if (!monthlyByCategory.has(cat)) monthlyByCategory.set(cat, new Map());
     const catMap = monthlyByCategory.get(cat)!;
@@ -236,17 +246,28 @@ async function getMedianSpendingByCategory(
   for (const [cat, monthMap] of monthlyByCategory) {
     const monthlyTotals = [...monthMap.values()];
     if (monthlyTotals.length === 0) continue;
-    result[cat] = median(monthlyTotals);
+
+    // Stap 1: ruwe mediaan
+    const rawMedian = median(monthlyTotals);
+
+    // Stap 2: demp uitschieters — cap maanden op 2x mediaan
+    const cap = rawMedian * 2;
+    const dampedTotals = monthlyTotals.map(v => Math.min(v, cap));
+
+    // Stap 3: mediaan van gedempte waarden
+    result[cat] = median(dampedTotals);
   }
 
   return result;
 }
 
-/** Haal uitgaven huidige maand op */
+/** Haal uitgaven huidige maand op.
+ *  Sparen wordt apart getrackt (niet als uitgave, maar wél als voortgang).
+ */
 async function getCurrentMonthSpending(
   userId: string,
   supabase: SupabaseClient
-): Promise<Record<string, number>> {
+): Promise<{ spending: Record<string, number>; savingsSpent: number }> {
   const now = new Date();
   const startOfMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
 
@@ -262,14 +283,25 @@ async function getCurrentMonthSpending(
   );
 
   const result: Record<string, number> = {};
+  let savingsSpent = 0;
+
   for (const tx of txs) {
     const t = tx as any;
     const cat = (t.category ?? "overig") as string;
-    const amount = Number(t.amount ?? 0);
+    const amount = Math.abs(Number(t.amount ?? 0));
     if (!Number.isFinite(amount)) continue;
-    result[cat] = (result[cat] ?? 0) + Math.abs(amount);
+
+    // Sparen apart tracken
+    if (cat === 'sparen') {
+      savingsSpent += amount;
+      continue;
+    }
+
+    // Overige excludes skippen
+    if (EXCLUDE_FROM_BUDGET.includes(cat)) continue;
+    result[cat] = (result[cat] ?? 0) + amount;
   }
-  return result;
+  return { spending: result, savingsSpent };
 }
 
 // ─── GET — Budget + voortgang ophalen ──────────────────────
@@ -283,7 +315,7 @@ export async function GET(_request: NextRequest) {
     if (!user)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const [budgetResult, income, spending] = await Promise.all([
+    const [budgetResult, income, spendingResult] = await Promise.all([
       supabase.from("budgets").select("*").eq("user_id", user.id).single(),
       getMonthlyIncome(user.id, supabase),
       getCurrentMonthSpending(user.id, supabase),
@@ -291,7 +323,8 @@ export async function GET(_request: NextRequest) {
 
     return NextResponse.json({
       budget: budgetResult.data,
-      uitgavenDezeMaand: spending,
+      uitgavenDezeMaand: spendingResult.spending,
+      sparenDezeMaand: spendingResult.savingsSpent,
       totalInkomen: income.amount,
       salaryDay: income.salaryDay,
     });
@@ -361,14 +394,19 @@ export async function POST(_request: NextRequest) {
     const categories: BudgetCategory[] = [];
 
     for (const cat of allCategories) {
-      if (cat === "inkomen" || cat === "sparen") continue;
+      // Dubbele veiligheid
+      if (EXCLUDE_FROM_BUDGET.includes(cat)) continue;
       const med = medianSpending[cat] ?? 0;
       const floor = recurringFloor[cat] ?? 0;
       const budgetAmount = Math.round(Math.max(med, floor));
       if (budgetAmount < 5) continue;
+
+      // Minimum budget per categorie: als het voorkomt, minimaal €50
+      const MIN_CATEGORY_BUDGET = 50;
+      const finalBudget = Math.max(budgetAmount, MIN_CATEGORY_BUDGET);
       categories.push({
         category: cat,
-        budget: budgetAmount,
+        budget: finalBudget,
         icon: CATEGORY_ICONS[cat] ?? "📦",
         tip: "",
       });
@@ -376,39 +414,51 @@ export async function POST(_request: NextRequest) {
 
     categories.sort((a, b) => b.budget - a.budget);
 
-    // ── Schaal variabele kosten als totaal > inkomen ─────────
-    const totalBeforeSavings = categories.reduce((s, c) => s + c.budget, 0);
-    const minSavings = Math.round(income.amount * MIN_SAVINGS_RATE);
-    const maxBudgetExSavings = income.amount - minSavings;
-
-    if (totalBeforeSavings > maxBudgetExSavings) {
-      const fixedCategories = new Set(Object.keys(recurringFloor));
-      const variableTotal = categories
-        .filter((c) => !fixedCategories.has(c.category))
-        .reduce((s, c) => s + c.budget, 0);
-      const fixedTotal = categories
-        .filter((c) => fixedCategories.has(c.category))
-        .reduce((s, c) => s + c.budget, 0);
-
-      const variableBudgetAvailable = maxBudgetExSavings - fixedTotal;
-
-      if (variableTotal > 0 && variableBudgetAvailable > 0) {
-        const scaleFactor = Math.min(1, variableBudgetAvailable / variableTotal);
-        for (const cat of categories) {
-          if (!fixedCategories.has(cat.category)) {
-            cat.budget = Math.round(cat.budget * scaleFactor);
-          }
-        }
-      } else if (variableBudgetAvailable <= 0) {
-        const fixed = categories.filter((c) =>
-          fixedCategories.has(c.category)
-        );
-        categories.length = 0;
-        categories.push(...fixed);
+    // ── Cap "overig" op max 10% van inkomen ─────────────────
+    // Overig is ruis — Tikkie, geldopnames, incidenteel. Geen budget voor nodig.
+    const overigCap = Math.round(income.amount * 0.10);
+    for (const cat of categories) {
+      if (cat.category === 'overig' && cat.budget > overigCap) {
+        cat.budget = overigCap;
       }
     }
 
-    // ── Sparen toevoegen ────────────────────────────────────
+    // ── Harde budget cap: totaal uitgaven + sparen = inkomen ──
+    const minSavings = Math.round(income.amount * MIN_SAVINGS_RATE);
+    const maxBudgetExSavings = income.amount - minSavings;
+    const totalBeforeCap = categories.reduce((s, c) => s + c.budget, 0);
+
+    if (totalBeforeCap > maxBudgetExSavings) {
+      // Recurring floor categorieën zijn "semi-fixed" — schaal ze minder agressief
+      const fixedCategories = new Set(Object.keys(recurringFloor));
+
+      // Split in fixed en variable
+      const fixedCats = categories.filter(c => fixedCategories.has(c.category));
+      const variableCats = categories.filter(c => !fixedCategories.has(c.category));
+
+      const fixedTotal = fixedCats.reduce((s, c) => s + c.budget, 0);
+      const variableTotal = variableCats.reduce((s, c) => s + c.budget, 0);
+      const variableBudgetAvailable = maxBudgetExSavings - fixedTotal;
+
+      if (variableTotal > 0 && variableBudgetAvailable > 0) {
+        // Schaal variabele categorieën
+        const scaleFactor = Math.min(1, variableBudgetAvailable / variableTotal);
+        for (const cat of variableCats) {
+          cat.budget = Math.round(cat.budget * scaleFactor);
+        }
+      }
+
+      // Als het NOG steeds niet past (fixed alleen al > budget), schaal alles
+      const totalAfterVariableScale = categories.reduce((s, c) => s + c.budget, 0);
+      if (totalAfterVariableScale > maxBudgetExSavings) {
+        const globalScale = maxBudgetExSavings / totalAfterVariableScale;
+        for (const cat of categories) {
+          cat.budget = Math.round(cat.budget * globalScale);
+        }
+      }
+    }
+
+    // ── Sparen = inkomen - totaal uitgaven (minimaal 10%) ───
     const totalAllocated = categories.reduce((s, c) => s + c.budget, 0);
     const savingsAmount = Math.max(minSavings, income.amount - totalAllocated);
 
@@ -500,7 +550,6 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Valideer structuur
     const valid = categories.every(
       (c: any) =>
         typeof c.category === "string" &&
@@ -517,7 +566,6 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Sanitize: alleen toegestane velden opslaan
     const sanitized: BudgetCategory[] = categories.map((c: any) => ({
       category: String(c.category).slice(0, 50),
       budget: Math.round(Math.max(0, Number(c.budget))),

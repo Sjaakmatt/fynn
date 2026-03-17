@@ -4,6 +4,9 @@ import { plaidClient } from "@/lib/plaid";
 import { extractMerchant } from "@/lib/clean-description";
 import { categorizeTransaction } from "@/lib/categorize-engine";
 import type { Transaction, RemovedTransaction } from "plaid";
+import { invalidateDashboardCache } from '@/lib/dashboard-cache'
+import { detectRecurring } from '@/lib/detect-recurring'
+import { detectIncome } from '@/lib/detect-income'
 
 // -- Config ------------------------------------------------------------------
 
@@ -22,12 +25,17 @@ function stableId(input: string): string {
 }
 
 async function loadMerchantCategories(supabase: any, userId: string) {
-  const [{ data: merchantMap }, { data: overrides }] = await Promise.all([
+  const [{ data: merchantMap }, { data: overrides }, { data: ibanRows }] = await Promise.all([
     supabase.from("merchant_map").select("merchant_key, category"),
     supabase
       .from("merchant_user_overrides")
       .select("merchant_key, category")
       .eq("user_id", userId),
+    supabase
+      .from("bank_accounts")
+      .select("iban")
+      .eq("user_id", userId)
+      .not("iban", "is", null),
   ]);
 
   const globalCategories = new Map<string, string>();
@@ -40,7 +48,11 @@ async function loadMerchantCategories(supabase: any, userId: string) {
     if (o.category) userOverrides.set(o.merchant_key, o.category);
   }
 
-  return { globalCategories, userOverrides };
+  const userIbans = (ibanRows ?? [])
+    .map((a: any) => a.iban)
+    .filter((iban: any): iban is string => typeof iban === "string" && iban.length > 0);
+
+  return { globalCategories, userOverrides, userIbans };
 }
 
 // -- Transform Plaid transactions into Supabase rows -------------------------
@@ -48,9 +60,10 @@ async function loadMerchantCategories(supabase: any, userId: string) {
 function transformTransactions(
   transactions: Transaction[],
   userId: string,
-  accountIdMap: Map<string, string>, // plaid account_id → internal UUID
+  accountIdMap: Map<string, string>,
   globalCategories: Map<string, string>,
   userOverrides: Map<string, string>,
+  userIbans: string[],
 ) {
   const rows: Array<Record<string, any>> = [];
   const merchantSeeds = new Map<string, {
@@ -86,7 +99,7 @@ function transformTransactions(
       ? (userOverrides.get(merchantKey) ?? globalCategories.get(merchantKey) ?? null)
       : null;
 
-    const category = categorizeTransaction(description, signedAmount, existingCategory);
+    const category = categorizeTransaction(description, signedAmount, existingCategory, userIbans);
 
     const externalId = `plaid:${t.transaction_id}`;
 
@@ -201,7 +214,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Pre-load merchant categories
-  const { globalCategories, userOverrides } = await loadMerchantCategories(supabase, user.id);
+  const { globalCategories, userOverrides, userIbans } = await loadMerchantCategories(supabase, user.id);
 
   let totalAdded = 0;
   let totalModified = 0;
@@ -244,7 +257,7 @@ export async function POST(request: NextRequest) {
         // Intermediate upsert
         if (page % UPSERT_EVERY_N_PAGES === 0 && pendingAdded.length > 0) {
           const { rows, merchantSeeds } = transformTransactions(
-            pendingAdded, user.id, accountIdMap, globalCategories, userOverrides
+            pendingAdded, user.id, accountIdMap, globalCategories, userOverrides, userIbans
           );
           const result = await upsertBatch(supabase, rows, merchantSeeds, globalCategories);
           if (result.error) return NextResponse.json({ error: result.error }, { status: 500 });
@@ -279,7 +292,7 @@ export async function POST(request: NextRequest) {
     const allPending = [...pendingAdded, ...pendingModified];
     if (allPending.length > 0) {
       const { rows, merchantSeeds } = transformTransactions(
-        allPending, user.id, accountIdMap, globalCategories, userOverrides
+        allPending, user.id, accountIdMap, globalCategories, userOverrides, userIbans
       );
       const result = await upsertBatch(supabase, rows, merchantSeeds, globalCategories);
       if (result.error) return NextResponse.json({ error: result.error }, { status: 500 });
@@ -326,27 +339,30 @@ export async function POST(request: NextRequest) {
     `[Plaid Sync] Complete in ${duration}ms | +${totalAdded} ~${totalModified} -${totalRemoved} | upserted=${totalUpserted}`
   );
 
-  // Post-process: recurring + income detect
+  // Post-process: recurring + income detect (direct function calls, geen HTTP roundtrips)
   if (totalUpserted > 0) {
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-      const headers = {
-        "Content-Type": "application/json",
-        Cookie: request.headers.get("cookie") ?? "",
-      };
-
-      const [recRes, incRes] = await Promise.all([
-        fetch(`${baseUrl}/api/recurring/detect`, { method: "POST", headers }),
-        fetch(`${baseUrl}/api/income/detect`, { method: "POST", headers }),
-      ]);
-
-      const recData = await recRes.json().catch(() => ({}));
-      const incData = await incRes.json().catch(() => ({}));
-      console.log(`[Plaid Sync] Recurring: ${recData.updated ?? 0} | Income: ${incData.updated ?? 0}`);
+      const [recResult, incResult] = await Promise.all([
+        detectRecurring(supabase, user.id),
+        detectIncome(supabase, user.id),
+      ])
+      console.log(`[Plaid Sync] Recurring: ${recResult.updated} | Income: ${incResult.updated}`)
     } catch (e) {
-      console.warn("[Plaid Sync] Post-processing mislukt (non-blocking):", e);
+      console.warn('[Plaid Sync] Post-processing mislukt (non-blocking):', e)
     }
   }
+
+  // Classificeer nieuwe uncategorized merchants via AI (fire-and-forget)
+  if (totalUpserted > 0) {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+    fetch(`${baseUrl}/api/sync/classify-merchants`, {
+      method: 'POST',
+      headers: { Cookie: request.headers.get('cookie') ?? '' },
+    }).catch(() => {})
+  }
+
+  // Cache invalideren zodat dashboard verse data berekent
+  invalidateDashboardCache(supabase, user.id).catch(() => {})
 
   return NextResponse.json({
     ok: true,

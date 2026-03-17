@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import DashboardShell from '@/components/DashboardShell'
 import { Suspense } from 'react'
 import { resolveCategory, buildCategoryMaps } from '@/lib/resolve-category'
+import { readDashboardCache, writeDashboardCache } from '@/lib/dashboard-cache'
 
 interface CalendarItem {
   name: string
@@ -77,6 +78,42 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  // ── Cache check — skip alle queries als we verse data hebben ──
+  const cached = await readDashboardCache(supabase, user.id)
+
+  if (cached) {
+    // We hebben nog wél profile + briefing + accounts nodig (kleine queries)
+    const [{ data: profile }, { data: briefing }, { data: accounts }] = await Promise.all([
+      supabase.from('profiles').select('subscription_status, trial_ends_at, full_name').eq('id', user.id).single(),
+      supabase.from('briefings').select('*').eq('user_id', user.id).single(),
+      supabase.from('bank_accounts').select('id, account_name, iban, balance, account_type, provider').eq('user_id', user.id).neq('provider', 'iban_detected'),
+    ])
+
+    const isPro = profile?.subscription_status === 'active' || profile?.subscription_status === 'trialing'
+    const firstName = parseFirstName(profile?.full_name ?? null, user.email)
+
+    return (
+      <Suspense fallback={null}>
+        <DashboardShell
+          user={{ id: user.id, email: user.email, firstName }}
+          accounts={accounts ?? []}
+          stats={cached.stats}
+          variabelPerCategorie={cached.variabelPerCategorie}
+          sortedCategories={cached.sortedCategories}
+          briefing={briefing}
+          transactionCount={cached.transactionCount}
+          subscriptionStatus={profile?.subscription_status ?? null}
+          trialEndsAt={profile?.trial_ends_at ?? null}
+          isPro={isPro}
+          activeMonthLabel={cached.activeMonthLabel}
+          isHistoricData={cached.isHistoricData}
+        />
+      </Suspense>
+    )
+  }
+
+  // ── Geen cache — bestaande logica hieronder blijft ongewijzigd ──
+
   const today = new Date()
   const todayDay = today.getDate()
 
@@ -130,7 +167,7 @@ export default async function DashboardPage() {
   ])
 
   const totalBalance = (accounts ?? [])
-    .filter(a => a.account_type !== 'SAVINGS')
+    .filter(a => a.account_type !== 'SAVINGS' && a.provider !== 'iban_detected')
     .reduce((s, a) => s + (Number(a.balance) || 0), 0)
 
   // ── Category resolution maps (single source of truth) ──────────────
@@ -450,27 +487,38 @@ export default async function DashboardPage() {
 
   const firstName = parseFirstName(profile?.full_name ?? null, user.email)
 
+  // ── Cache schrijven voor volgende pageview (non-blocking) ─────────
+  const cachePayload = {
+    stats: {
+      beschikbaar: engine.vrijTeBesteden,
+      nogTeBetalen: engine.nogTeBetalen,
+      nogTeOntvangen: 0,
+      reedsBetaald: engine.reedsBetaald,
+      variabelReservering: engine.variabelReservering,
+      totalBalance,
+      totalUitgaven,
+      totalInkomen,
+      totalGespaard,
+      spaarpct,
+    },
+    sortedCategories,
+    variabelPerCategorie,
+    transactionCount: analyseTx?.length ?? 0,
+    activeMonthLabel,
+    isHistoricData,
+  }
+  writeDashboardCache(supabase, user.id, cachePayload).catch(() => {})
+
   return (
     <Suspense fallback={null}>
       <DashboardShell
         user={{ id: user.id, email: user.email, firstName }}
         accounts={accounts ?? []}
-        stats={{
-          beschikbaar: engine.vrijTeBesteden,
-          nogTeBetalen: engine.nogTeBetalen,
-          nogTeOntvangen: 0,
-          reedsBetaald: engine.reedsBetaald,
-          variabelReservering: engine.variabelReservering,
-          totalBalance,
-          totalUitgaven,
-          totalInkomen,
-          totalGespaard,
-          spaarpct,
-        }}
+        stats={cachePayload.stats}
         variabelPerCategorie={variabelPerCategorie}
         sortedCategories={sortedCategories}
         briefing={briefing}
-        transactionCount={analyseTx?.length ?? 0}
+        transactionCount={cachePayload.transactionCount}
         subscriptionStatus={profile?.subscription_status ?? null}
         trialEndsAt={profile?.trial_ends_at ?? null}
         isPro={isPro}

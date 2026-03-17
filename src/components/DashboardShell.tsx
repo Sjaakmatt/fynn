@@ -329,7 +329,6 @@ export default function DashboardShell({
           {/* ANALYSE TAB */}
           {hasData && (
             <TabPanel id="analyse">
-              <FinancialRadar />
               <CategoryBreakdown
                 sortedCategories={sortedCategories}
                 totalUitgaven={stats.totalUitgaven}
