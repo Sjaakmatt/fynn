@@ -600,10 +600,10 @@ export default function BetaPage() {
               <img src="/logo.png" alt="Fynn" className="logo-dark" style={{ height: 40, width: 'auto' }} />
             </>
           </Link>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <ThemeToggle />
-            <Link href="/login" style={{ padding: '8px 16px', borderRadius: 10, fontSize: 14, color: 'var(--muted)', textDecoration: 'none' }}>Inloggen</Link>
-            <Link href="/signup?ref=beta" style={{ padding: '10px 20px', borderRadius: 12, fontSize: 14, backgroundColor: 'var(--brand)', color: 'white', textDecoration: 'none', fontWeight: 600 }}>Beta aanmelden</Link>
+            <Link href="/login" className="hidden sm:inline-block" style={{ padding: '8px 16px', borderRadius: 10, fontSize: 14, color: 'var(--muted)', textDecoration: 'none', whiteSpace: 'nowrap' }}>Inloggen</Link>
+            <Link href="/signup?ref=beta" style={{ padding: '10px 16px', borderRadius: 12, fontSize: 14, backgroundColor: 'var(--brand)', color: 'white', textDecoration: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}>Beta aanmelden</Link>
           </div>
         </div>
       </nav>
