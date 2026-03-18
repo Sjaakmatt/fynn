@@ -63,7 +63,7 @@ export async function POST(_request: NextRequest) {
       items: [{ price: priceId }],
       payment_behavior: "default_incomplete",
       payment_settings: {
-        payment_method_types: ["card", "sepa_debit"],
+        payment_method_types: ["card"],
         save_default_payment_method: "on_subscription",
       },
       trial_period_days: trialDays,

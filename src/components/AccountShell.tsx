@@ -9,6 +9,7 @@ import MFASettings from './mfa/Mfasettings'
 import TransactionUpload from './TransactionUpload'
 import BankConnectModal from './BankConnectModal'
 import SubscriptionBanner from './checkout/SubscriptionBanner'
+import ContactForm from './ContactForm'
 
 interface Props {
   user: {
@@ -224,6 +225,10 @@ export default function AccountShell({ user, subscription, accounts }: Props) {
         {/* ── Beveiliging ────────────────────────────────────────── */}
         <Section label="Beveiliging">
           <MFASettings />
+        </Section>
+
+        <Section label="Contact">
+          <ContactForm email={user.email} name={fullName} />
         </Section>
 
         {/* ── Gekoppelde rekeningen ───────────────────────────────── */}
