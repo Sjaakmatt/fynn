@@ -28,7 +28,10 @@ export async function POST(_request: NextRequest) {
       .single();
 
     // Voorkom dubbele subscriptions
-    if (profile?.subscription_status === "active") {
+    if (
+      profile?.subscription_status === "active" ||
+      profile?.subscription_status === "trialing"
+    ) {
       return NextResponse.json(
         { error: "Je hebt al een actief abonnement" },
         { status: 409 }
@@ -58,6 +61,7 @@ export async function POST(_request: NextRequest) {
     const trialDays = isBeta ? 90 : 14;
 
     // Maak subscription aan met trial
+    // Trial = geen directe betaling, maar wél kaartgegevens opslaan via SetupIntent
     const subscription = await stripe.subscriptions.create({
       customer: customerId,
       items: [{ price: priceId }],
@@ -67,6 +71,9 @@ export async function POST(_request: NextRequest) {
         save_default_payment_method: "on_subscription",
       },
       trial_period_days: trialDays,
+      trial_settings: {
+        end_behavior: { missing_payment_method: "cancel" },
+      },
       expand: ["latest_invoice.payment_intent", "pending_setup_intent"],
       metadata: {
         supabase_user_id: user.id,
@@ -74,7 +81,31 @@ export async function POST(_request: NextRequest) {
       },
     });
 
-    // Probeer PaymentIntent client secret te pakken
+    // ── 1) Trial → Stripe geeft een pending_setup_intent terug
+    const pendingSetupIntent =
+      subscription.pending_setup_intent as Stripe.SetupIntent | null;
+
+    if (pendingSetupIntent?.client_secret) {
+      // Sla subscription alvast op in profile (webhook doet het ook, maar dit is sneller)
+      await supabase
+        .from("profiles")
+        .update({
+          stripe_subscription_id: subscription.id,
+          subscription_status: subscription.status,
+          trial_ends_at: subscription.trial_end
+            ? new Date(subscription.trial_end * 1000).toISOString()
+            : null,
+        })
+        .eq("id", user.id);
+
+      return NextResponse.json({
+        clientSecret: pendingSetupIntent.client_secret,
+        intentType: "setup_intent",
+        subscriptionId: subscription.id,
+      });
+    }
+
+    // ── 2) Geen trial → payment_intent op eerste factuur
     const latestInvoice = subscription.latest_invoice as Stripe.Invoice & {
       payment_intent?: Stripe.PaymentIntent | null;
     } | null;
@@ -89,19 +120,7 @@ export async function POST(_request: NextRequest) {
       });
     }
 
-    // Trial zonder directe betaling → SetupIntent
-    const pendingSetupIntent =
-      subscription.pending_setup_intent as Stripe.SetupIntent | null;
-
-    if (pendingSetupIntent?.client_secret) {
-      return NextResponse.json({
-        clientSecret: pendingSetupIntent.client_secret,
-        intentType: "setup_intent",
-        subscriptionId: subscription.id,
-      });
-    }
-
-    // Fallback: handmatig SetupIntent aanmaken
+    // ── 3) Fallback: handmatig SetupIntent aanmaken
     const setupIntent = await stripe.setupIntents.create({
       customer: customerId,
       payment_method_types: ["card"],
@@ -110,6 +129,17 @@ export async function POST(_request: NextRequest) {
         subscription_id: subscription.id,
       },
     });
+
+    await supabase
+      .from("profiles")
+      .update({
+        stripe_subscription_id: subscription.id,
+        subscription_status: subscription.status,
+        trial_ends_at: subscription.trial_end
+          ? new Date(subscription.trial_end * 1000).toISOString()
+          : null,
+      })
+      .eq("id", user.id);
 
     return NextResponse.json({
       clientSecret: setupIntent.client_secret,
