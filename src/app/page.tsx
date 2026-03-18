@@ -729,7 +729,6 @@ export default function LandingPage() {
                 <span style={{ fontSize: 48, fontWeight: 800, letterSpacing: '-2px', fontVariantNumeric: 'tabular-nums' }}>€12,99</span>
                 <span style={{ color: 'var(--muted)', fontSize: 16 }}> / maand</span>
               </div>
-              <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 32 }}>Of €99 per jaar — twee maanden gratis</p>
               <div style={{ marginBottom: 32, display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {[
                   'Chat Coach — stel elke financiële vraag',
