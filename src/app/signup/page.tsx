@@ -1,69 +1,63 @@
-// src/app/signup/page.tsx
+// src/app/login/page.tsx
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { useState, Suspense } from 'react'
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import ThemeToggle from '@/components/ThemeToggle'
+import Link from 'next/link'
 
-function SignupForm() {
-  const [voornaam, setVoornaam] = useState('')
-  const [achternaam, setAchternaam] = useState('')
+export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [passwordConfirm, setPasswordConfirm] = useState('')
-  const [tos, setTos] = useState(false)
-  const [marketing, setMarketing] = useState(true)
   const [error, setError] = useState('')
+  const [emailNotConfirmed, setEmailNotConfirmed] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [resetMode, setResetMode] = useState(false)
+  const [resetSent, setResetSent] = useState(false)
   const router = useRouter()
-  const searchParams = useSearchParams()
   const supabase = createClient()
 
-  const isBeta = searchParams.get('ref') === 'beta'
-
-  async function handleSignup(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
-    setError('')
-
-    if (password !== passwordConfirm) {
-      setError('Wachtwoorden komen niet overeen.')
-      return
-    }
-    if (password.length < 8) {
-      setError('Wachtwoord moet minimaal 8 tekens zijn.')
-      return
-    }
-    if (!tos) {
-      setError('Je moet akkoord gaan met de voorwaarden.')
-      return
-    }
-
     setLoading(true)
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: `${voornaam} ${achternaam}`.trim(),
-          marketing_opt_in: marketing,
-          is_beta: isBeta,
-        },
-      },
-    })
+    setError('')
+    setEmailNotConfirmed(false)
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
 
     if (error) {
-      setError(error.message)
+      // Supabase returns "Email not confirmed" when user hasn't verified
+      if (error.message.toLowerCase().includes('email not confirmed')) {
+        setEmailNotConfirmed(true)
+        setError('')
+      } else {
+        setError('E-mailadres of wachtwoord klopt niet.')
+      }
       setLoading(false)
     } else {
       router.push('/dashboard')
     }
   }
 
-  const inputStyle = {
-    backgroundColor: 'var(--tab-bg)',
-    border: '1px solid var(--border)',
-    color: 'var(--text)',
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault()
+    if (!email.trim()) {
+      setError('Vul je e-mailadres in.')
+      return
+    }
+    setLoading(true)
+    setError('')
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    })
+    if (error) {
+      setError('Er ging iets mis. Probeer het opnieuw.')
+      setLoading(false)
+    } else {
+      setResetSent(true)
+      setLoading(false)
+    }
   }
 
   return (
@@ -82,29 +76,16 @@ function SignupForm() {
         </div>
         <div>
           <p className="text-2xl font-semibold leading-snug mb-4">
-            {isBeta
-              ? 'Welkom bij de Fynn bèta.'
-              : 'Grip op je geld begint met inzicht.'}
+            &ldquo;Ik wist niet waar mijn geld naartoe ging. Nu wel.&rdquo;
           </p>
-          <p className="text-sm opacity-60">
-            {isBeta
-              ? '3 maanden gratis. Daarna €4,99/maand — voor altijd.'
-              : 'Fynn analyseert je bankrekening en vertelt je precies wat je moet doen.'}
-          </p>
+          <p className="text-sm opacity-60">— Gebruiker uit Amsterdam</p>
         </div>
         <div className="space-y-3">
-          {(isBeta
-            ? [
-                '3 maanden gratis testen',
-                'Daarna €4,99/maand — voor altijd',
-                'Directe lijn met de founder',
-              ]
-            : [
-                '14 dagen gratis proberen',
-                'Geen creditcard nodig',
-                'Koppel je bank in 3 minuten',
-              ]
-          ).map(item => (
+          {[
+            'Bankrekening koppelen in 3 minuten',
+            'AI analyseert al je uitgaven',
+            'Elke week persoonlijke inzichten',
+          ].map(item => (
             <div key={item} className="flex items-center gap-2">
               <div
                 className="w-4 h-4 rounded-full flex items-center justify-center"
@@ -140,162 +121,180 @@ function SignupForm() {
             <span className="font-semibold" style={{ color: 'var(--text)' }}>Fynn</span>
           </div>
 
-          {/* Beta badge */}
-          {isBeta && (
-            <div
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-4"
-              style={{
-                backgroundColor: 'rgba(245,158,11,0.08)',
-                border: '1px solid rgba(245,158,11,0.2)',
-              }}
-            >
-              <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#F59E0B' }} />
-              <span className="text-xs font-semibold" style={{ color: '#F59E0B' }}>
-                Bèta toegang
-              </span>
+          {/* ── Reset password sent ── */}
+          {resetSent ? (
+            <div className="text-center space-y-4">
+              <div
+                className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto"
+                style={{ backgroundColor: 'color-mix(in srgb, var(--brand) 10%, transparent)' }}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="4" width="20" height="16" rx="2" />
+                  <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                </svg>
+              </div>
+              <h1 className="text-lg font-semibold" style={{ color: 'var(--text)' }}>
+                Check je inbox
+              </h1>
+              <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                We hebben een link naar <span style={{ color: 'var(--text)' }}>{email}</span> gestuurd
+                waarmee je je wachtwoord kunt resetten.
+              </p>
+              <button
+                onClick={() => { setResetMode(false); setResetSent(false); setError('') }}
+                className="text-sm font-semibold"
+                style={{ color: 'var(--brand)' }}
+              >
+                Terug naar inloggen
+              </button>
             </div>
+          ) : resetMode ? (
+            <>
+              <h1 className="text-lg font-semibold mb-1" style={{ color: 'var(--text)' }}>
+                Wachtwoord vergeten?
+              </h1>
+              <p className="text-xs mb-8" style={{ color: 'var(--muted)' }}>
+                Vul je e-mailadres in en we sturen je een resetlink.
+              </p>
+
+              <form onSubmit={handleResetPassword} className="space-y-3">
+                <input
+                  type="email"
+                  placeholder="E-mailadres"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  autoFocus
+                  className="w-full rounded-xl px-4 py-3 text-sm outline-none"
+                  style={{
+                    backgroundColor: 'var(--tab-bg)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text)',
+                  }}
+                  required
+                />
+
+                {error && (
+                  <p className="text-xs px-1" style={{ color: '#EF4444' }}>{error}</p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full rounded-xl py-3.5 text-sm font-semibold text-white disabled:opacity-30 transition-opacity"
+                  style={{ backgroundColor: 'var(--brand)' }}
+                >
+                  {loading ? 'Versturen…' : 'Resetlink versturen'}
+                </button>
+              </form>
+
+              <p className="text-xs text-center mt-6" style={{ color: 'var(--muted)' }}>
+                <button
+                  onClick={() => { setResetMode(false); setError('') }}
+                  className="font-semibold"
+                  style={{ color: 'var(--brand)' }}
+                >
+                  Terug naar inloggen
+                </button>
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-lg font-semibold mb-1" style={{ color: 'var(--text)' }}>
+                Welkom terug
+              </h1>
+              <p className="text-xs mb-8" style={{ color: 'var(--muted)' }}>
+                Log in om je financieel overzicht te bekijken.
+              </p>
+
+              <form onSubmit={handleLogin} className="space-y-3">
+                <input
+                  type="email"
+                  placeholder="E-mailadres"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="w-full rounded-xl px-4 py-3 text-sm outline-none"
+                  style={{
+                    backgroundColor: 'var(--tab-bg)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text)',
+                  }}
+                  required
+                />
+                <input
+                  type="password"
+                  placeholder="Wachtwoord"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className="w-full rounded-xl px-4 py-3 text-sm outline-none"
+                  style={{
+                    backgroundColor: 'var(--tab-bg)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text)',
+                  }}
+                  required
+                />
+
+                {error && (
+                  <p className="text-xs px-1" style={{ color: '#EF4444' }}>{error}</p>
+                )}
+
+                {/* Email not confirmed banner */}
+                {emailNotConfirmed && (
+                  <div
+                    className="rounded-xl p-4 space-y-2"
+                    style={{
+                      backgroundColor: 'rgba(245,158,11,0.08)',
+                      border: '1px solid rgba(245,158,11,0.2)',
+                    }}
+                  >
+                    <p className="text-xs font-semibold" style={{ color: '#F59E0B' }}>
+                      E-mailadres nog niet bevestigd
+                    </p>
+                    <p className="text-xs" style={{ color: 'var(--muted)', lineHeight: 1.5 }}>
+                      We hebben een bevestigingslink gestuurd naar <span className="font-semibold" style={{ color: 'var(--text)' }}>{email}</span>. 
+                      Klik op de link in de e-mail om je account te activeren.
+                    </p>
+                    <Link
+                      href={`/verify-email?email=${encodeURIComponent(email)}`}
+                      className="inline-block text-xs font-semibold mt-1"
+                      style={{ color: 'var(--brand)' }}
+                    >
+                      Verificatie-e-mail opnieuw versturen →
+                    </Link>
+                  </div>
+                )}
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => { setResetMode(true); setError(''); setEmailNotConfirmed(false) }}
+                    className="text-xs"
+                    style={{ color: 'var(--muted)' }}
+                  >
+                    Wachtwoord vergeten?
+                  </button>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full rounded-xl py-3.5 text-sm font-semibold text-white disabled:opacity-30 transition-opacity"
+                  style={{ backgroundColor: 'var(--brand)' }}
+                >
+                  {loading ? 'Inloggen…' : 'Inloggen'}
+                </button>
+              </form>
+
+              <p className="text-xs text-center mt-6" style={{ color: 'var(--muted)' }}>
+                Nog geen account?{' '}
+                <a href="/signup" className="font-semibold" style={{ color: 'var(--brand)' }}>
+                  Gratis aanmelden
+                </a>
+              </p>
+            </>
           )}
-
-          <h1 className="text-lg font-semibold mb-1" style={{ color: 'var(--text)' }}>
-            {isBeta ? 'Claim je bèta plek' : 'Start gratis'}
-          </h1>
-          <p className="text-xs mb-8" style={{ color: 'var(--muted)' }}>
-            {isBeta
-              ? '3 maanden gratis. Daarna €4,99/maand — voor altijd.'
-              : '14 dagen gratis. Daarna €12,99/maand. Altijd opzegbaar.'}
-          </p>
-
-          <form onSubmit={handleSignup} className="space-y-3">
-
-            {/* Naam */}
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Voornaam"
-                value={voornaam}
-                onChange={e => setVoornaam(e.target.value)}
-                className="w-full rounded-xl px-4 py-3 text-sm outline-none"
-                style={inputStyle}
-                required
-              />
-              <input
-                type="text"
-                placeholder="Achternaam"
-                value={achternaam}
-                onChange={e => setAchternaam(e.target.value)}
-                className="w-full rounded-xl px-4 py-3 text-sm outline-none"
-                style={inputStyle}
-                required
-              />
-            </div>
-
-            {/* Email */}
-            <input
-              type="email"
-              placeholder="E-mailadres"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              className="w-full rounded-xl px-4 py-3 text-sm outline-none"
-              style={inputStyle}
-              required
-            />
-
-            {/* Wachtwoord */}
-            <input
-              type="password"
-              placeholder="Wachtwoord (min. 8 tekens)"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              className="w-full rounded-xl px-4 py-3 text-sm outline-none"
-              style={inputStyle}
-              required
-            />
-            <input
-              type="password"
-              placeholder="Wachtwoord bevestigen"
-              value={passwordConfirm}
-              onChange={e => setPasswordConfirm(e.target.value)}
-              className="w-full rounded-xl px-4 py-3 text-sm outline-none"
-              style={{
-                ...inputStyle,
-                borderColor: passwordConfirm && password !== passwordConfirm
-                  ? '#EF4444'
-                  : 'var(--border)',
-              }}
-              required
-            />
-
-            {/* Checkboxes */}
-            <div className="space-y-2 pt-1">
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={tos}
-                  onChange={e => setTos(e.target.checked)}
-                  className="mt-0.5 rounded"
-                  style={{ accentColor: 'var(--brand)' }}
-                />
-                <span className="text-xs leading-relaxed" style={{ color: 'var(--muted)' }}>
-                  Ik ga akkoord met de{' '}
-                  <a href="/voorwaarden" className="underline" style={{ color: 'var(--brand)' }}>
-                    algemene voorwaarden
-                  </a>{' '}
-                  en het{' '}
-                  <a href="/privacy" className="underline" style={{ color: 'var(--brand)' }}>
-                    privacybeleid
-                  </a>
-                  . *
-                </span>
-              </label>
-
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={marketing}
-                  onChange={e => setMarketing(e.target.checked)}
-                  className="mt-0.5 rounded"
-                  style={{ accentColor: 'var(--brand)' }}
-                />
-                <span className="text-xs leading-relaxed" style={{ color: 'var(--muted)' }}>
-                  Stuur mij wekelijkse financiële tips en productnieuws. Je kunt je altijd afmelden.
-                </span>
-              </label>
-            </div>
-
-            {error && (
-              <p className="text-xs px-1" style={{ color: '#EF4444' }}>{error}</p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-xl py-3.5 text-sm font-semibold text-white disabled:opacity-30 transition-opacity"
-              style={{ backgroundColor: 'var(--brand)' }}
-            >
-              {loading
-                ? 'Account aanmaken…'
-                : isBeta
-                  ? 'Bèta plek claimen'
-                  : 'Gratis starten'}
-            </button>
-          </form>
-
-          <p className="text-xs text-center mt-5" style={{ color: 'var(--muted)' }}>
-            Al een account?{' '}
-            <a href="/login" className="font-semibold" style={{ color: 'var(--brand)' }}>
-              Inloggen
-            </a>
-          </p>
         </div>
       </div>
     </div>
-  )
-}
-
-export default function SignupPage() {
-  return (
-    <Suspense>
-      <SignupForm />
-    </Suspense>
   )
 }

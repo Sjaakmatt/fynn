@@ -7,7 +7,12 @@ const PAGE_SIZE = 1000;
 const COOLDOWN_HOURS = 6;
 
 // Categorieën die NIET als uitgave tellen
-const EXCLUDE_FROM_SPENDING = ['inkomen', 'interne_overboeking', 'toeslagen', 'sparen'];
+const EXCLUDE_FROM_SPENDING = [
+  "inkomen",
+  "interne_overboeking",
+  "toeslagen",
+  "sparen",
+];
 
 type TxRow = {
   description: string | null;
@@ -18,27 +23,26 @@ type TxRow = {
   merchant_key: string | null;
 };
 
-// ── Helpers ─────────────────────────────────────────────────────
+type BudgetRow = {
+  category: string;
+  budget_amount: string | number;
+};
 
-function dateRange(monthsBack: number): { from: string; to: string } {
-  const now = new Date();
-  const from = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthsBack, 1)
-  );
-  const to = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthsBack + 1, 0)
-  );
-  return {
-    from: from.toISOString().slice(0, 10),
-    to: to.toISOString().slice(0, 10),
-  };
+// ── Helpers ─────────────────────────────────────────────────
+
+function daysAgo(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
 }
 
-function median(values: number[]): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function startOfMonth(): string {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
 }
 
 function analyzeTransactions(
@@ -50,6 +54,7 @@ function analyzeTransactions(
   let totaalIn = 0;
   let spaarbedrag = 0;
   const merchants: Record<string, number> = {};
+  const dagUitgaven: Record<string, number> = {};
 
   for (const tx of txs) {
     const amount = Number(tx.amount ?? 0);
@@ -62,7 +67,7 @@ function analyzeTransactions(
       continue;
     }
 
-    // Positieve bedragen die geen inkomen zijn → skip (retourbetalingen, Tikkie's)
+    // Positieve bedragen die geen inkomen zijn → skip
     if (amount >= 0) continue;
 
     // Sparen apart tracken
@@ -80,6 +85,10 @@ function analyzeTransactions(
 
     const name = tx.merchant_name ?? tx.description ?? "onbekend";
     merchants[name] = (merchants[name] ?? 0) + abs;
+
+    // Track dagelijks voor patroonherkenning
+    const dag = tx.transaction_date?.slice(0, 10) ?? "onbekend";
+    dagUitgaven[dag] = (dagUitgaven[dag] ?? 0) + abs;
   }
 
   const topCategorieen = Object.entries(uitgaven)
@@ -90,6 +99,11 @@ function analyzeTransactions(
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
 
+  // Piekdagen (top 3 duurste dagen)
+  const piekDagen = Object.entries(dagUitgaven)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
+
   return {
     totaalUit,
     totaalIn,
@@ -97,6 +111,7 @@ function analyzeTransactions(
     spaarpct: totaalIn > 0 ? ((spaarbedrag / totaalIn) * 100).toFixed(1) : "0",
     topCategorieen,
     topMerchants,
+    piekDagen,
     txCount: txs.length,
   };
 }
@@ -113,7 +128,9 @@ async function fetchTransactions(
   while (true) {
     const { data, error } = await supabase
       .from("transactions")
-      .select("description, amount, category, transaction_date, merchant_name, merchant_key")
+      .select(
+        "description, amount, category, transaction_date, merchant_name, merchant_key"
+      )
       .eq("user_id", userId)
       .gte("transaction_date", from)
       .lte("transaction_date", to)
@@ -140,7 +157,7 @@ async function getIncomeKeys(
   return new Set((data ?? []).map((r: any) => r.merchant_key as string));
 }
 
-// ── Route ───────────────────────────────────────────────────────
+// ── Route ───────────────────────────────────────────────────
 
 export async function POST(_request: NextRequest) {
   try {
@@ -151,7 +168,7 @@ export async function POST(_request: NextRequest) {
     if (!user)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    // ── Subscription check ────────────────────────────────────
+    // ── Subscription check ────────────────────────────────
     const { data: profile } = await supabase
       .from("profiles")
       .select("subscription_status, trial_ends_at")
@@ -172,7 +189,7 @@ export async function POST(_request: NextRequest) {
       );
     }
 
-    // ── Rate limiting (1x per COOLDOWN_HOURS) ─────────────────
+    // ── Rate limiting (1x per COOLDOWN_HOURS) ─────────────
     const { data: lastBriefing } = await supabase
       .from("briefings")
       .select("created_at")
@@ -196,104 +213,187 @@ export async function POST(_request: NextRequest) {
       }
     }
 
-    // ── Fetch income keys + transacties ───────────────────────
-    const [incomeKeys, dezeMaandRange, vorigeMaandRange] = await Promise.all([
+    // ── Fetch all data in parallel ────────────────────────
+    const todayStr = today();
+    const weekAgo = daysAgo(7);
+    const monthStart = startOfMonth();
+    const prevWeekStart = daysAgo(14);
+    const prevWeekEnd = daysAgo(7);
+
+    const [
+      incomeKeys,
+      txWeek,
+      txPrevWeek,
+      txMonth,
+      recurringData,
+      goalData,
+      budgetData,
+    ] = await Promise.all([
       getIncomeKeys(supabase),
-      Promise.resolve(dateRange(0)),
-      Promise.resolve(dateRange(1)),
+      fetchTransactions(supabase, user.id, weekAgo, todayStr),
+      fetchTransactions(supabase, user.id, prevWeekStart, prevWeekEnd),
+      fetchTransactions(supabase, user.id, monthStart, todayStr),
+      supabase
+        .from("merchant_map")
+        .select("merchant_name, category")
+        .eq("recurring_hint", true)
+        .not("category", "is", null)
+        .limit(20),
+      supabase
+        .from("savings_goals")
+        .select("name, target_amount, current_amount")
+        .eq("user_id", user.id)
+        .limit(3),
+      supabase
+        .from("budgets")
+        .select("category, budget_amount")
+        .eq("user_id", user.id),
     ]);
 
-    const [txDezeMaand, txVorigeMaand] = await Promise.all([
-      fetchTransactions(supabase, user.id, dezeMaandRange.from, dezeMaandRange.to),
-      fetchTransactions(supabase, user.id, vorigeMaandRange.from, vorigeMaandRange.to),
-    ]);
+    // Analyze each period
+    const week = analyzeTransactions(txWeek, incomeKeys);
+    const prevWeek = analyzeTransactions(txPrevWeek, incomeKeys);
+    const month = analyzeTransactions(txMonth, incomeKeys);
 
-    if (txDezeMaand.length === 0) {
+    if (txWeek.length === 0 && txMonth.length === 0) {
       return NextResponse.json(
-        { error: "Geen transacties gevonden voor deze periode" },
+        { error: "Geen transacties gevonden" },
         { status: 400 }
       );
     }
 
-    const huidig = analyzeTransactions(txDezeMaand, incomeKeys);
-    const vorig = analyzeTransactions(txVorigeMaand, incomeKeys);
-
-    // ── Recurring kosten ophalen ──────────────────────────────
-    const { data: recurring } = await supabase
-      .from("merchant_map")
-      .select("merchant_name, category")
-      .eq("recurring_hint", true)
-      .not("category", "is", null)
-      .limit(20);
-
-    const recurringList = (recurring ?? [])
+    // ── Recurring kosten ──────────────────────────────────
+    const recurringList = (recurringData.data ?? [])
       .filter((r: any) => !EXCLUDE_FROM_SPENDING.includes(r.category))
       .map((r: any) => `${r.merchant_name} (${r.category})`)
       .join(", ");
 
-    // ── Savings goal ──────────────────────────────────────────
-    const { data: goal } = await supabase
-      .from("savings_goals")
-      .select("name, target_amount, current_amount")
-      .eq("user_id", user.id)
-      .limit(1)
-      .maybeSingle();
+    // ── Budget vs actuals (MTD) ───────────────────────────
+    const budgets = (budgetData.data ?? []) as BudgetRow[];
+    let budgetBlock = "";
+    if (budgets.length > 0) {
+      const lines = budgets
+        .map((b) => {
+          const budget = Number(b.budget_amount);
+          const spent = month.topCategorieen.find(
+            ([cat]) => cat === b.category
+          );
+          const actual = spent ? spent[1] : 0;
+          const pct = budget > 0 ? ((actual / budget) * 100).toFixed(0) : "0";
+          const status =
+            actual > budget ? "OVER" : Number(pct) > 80 ? "BIJNA" : "OK";
+          return `  ${b.category}: €${actual.toFixed(0)} / €${budget.toFixed(0)} (${pct}%) [${status}]`;
+        })
+        .join("\n");
+      budgetBlock = `\nBudget voortgang (maand tot nu):\n${lines}`;
+    }
 
-    // ── Build prompt ──────────────────────────────────────────
-    const catLines = huidig.topCategorieen
+    // ── Savings goals ─────────────────────────────────────
+    const goals = goalData.data ?? [];
+    let goalBlock = "";
+    if (goals.length > 0) {
+      goalBlock =
+        "\nSpaardoelen:\n" +
+        goals
+          .map((g: any) => {
+            const current = Number(g.current_amount ?? 0);
+            const target = Number(g.target_amount);
+            const pct = target > 0 ? ((current / target) * 100).toFixed(0) : "0";
+            return `  "${g.name}" — €${current.toFixed(0)} / €${target.toFixed(0)} (${pct}%)`;
+          })
+          .join("\n");
+    }
+
+    // ── Build data blocks for prompt ──────────────────────
+    const weekCatLines = week.topCategorieen
       .map(([cat, total]) => `  ${cat}: €${total.toFixed(2)}`)
       .join("\n");
 
-    const merchantLines = huidig.topMerchants
+    const weekMerchantLines = week.topMerchants
       .map(([name, total]) => `  ${name}: €${total.toFixed(2)}`)
       .join("\n");
 
-    const vergelijking =
-      vorig.txCount > 0
-        ? `
-Vergelijking met vorige maand:
-  Uitgaven: €${vorig.totaalUit.toFixed(2)} → €${huidig.totaalUit.toFixed(2)} (${huidig.totaalUit > vorig.totaalUit ? "+" : ""}${(huidig.totaalUit - vorig.totaalUit).toFixed(2)})
-  Inkomen: €${vorig.totaalIn.toFixed(2)} → €${huidig.totaalIn.toFixed(2)}
-  Spaarquote: ${vorig.spaarpct}% → ${huidig.spaarpct}%`
-        : "";
+    const weekDagLines = week.piekDagen
+      .map(
+        ([dag, total]) =>
+          `  ${new Date(dag).toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "short" })}: €${total.toFixed(0)}`
+      )
+      .join("\n");
 
-    const goalContext = goal
-      ? `\nSpaardoel: "${goal.name}" — €${Number(goal.current_amount ?? 0).toFixed(0)} / €${Number(goal.target_amount).toFixed(0)} (${((Number(goal.current_amount ?? 0) / Number(goal.target_amount)) * 100).toFixed(0)}%)`
-      : "";
+    // Week-over-week vergelijking
+    let weekVergelijking = "";
+    if (prevWeek.txCount > 0) {
+      const diff = week.totaalUit - prevWeek.totaalUit;
+      const diffPct =
+        prevWeek.totaalUit > 0
+          ? ((diff / prevWeek.totaalUit) * 100).toFixed(0)
+          : "n/a";
+      weekVergelijking = `\nVergelijking met vorige week:
+  Vorige week: €${prevWeek.totaalUit.toFixed(0)} uitgegeven
+  Deze week: €${week.totaalUit.toFixed(0)} uitgegeven (${diff > 0 ? "+" : ""}${diff.toFixed(0)}, ${diff > 0 ? "+" : ""}${diffPct}%)`;
+    }
 
+    // Maandtotaal context
+    const dayOfMonth = new Date().getDate();
+    const daysInMonth = new Date(
+      new Date().getFullYear(),
+      new Date().getMonth() + 1,
+      0
+    ).getDate();
+    const monthPct = ((dayOfMonth / daysInMonth) * 100).toFixed(0);
+
+    const monthContext = `\nMaandoverzicht (dag ${dayOfMonth}/${daysInMonth} — ${monthPct}% van de maand):
+  Uitgegeven deze maand: €${month.totaalUit.toFixed(0)}
+  Inkomen deze maand: €${month.totaalIn.toFixed(0)}
+  Gespaard deze maand: €${month.spaarbedrag.toFixed(0)}`;
+
+    // ── Prompt ────────────────────────────────────────────
     const prompt = `Jij bent Fynn, een persoonlijke financiële coach. Je toon is die van een slimme, eerlijke vriend — geen bank, geen jargon, geen oordeel. Direct, warm, motiverend.
 
-Schrijf een financiële briefing van maximaal 280 woorden op basis van deze data:
+Schrijf een WEKELIJKSE financiële briefing van maximaal 280 woorden. Focus op de afgelopen 7 dagen, met de maandcontext erbij.
 
-Periode: lopende maand (${dezeMaandRange.from} t/m vandaag)
-Totaal uitgegeven (excl. sparen): €${huidig.totaalUit.toFixed(2)}
-Totaal inkomen (salaris): €${huidig.totaalIn.toFixed(2)}
-Gespaard: €${huidig.spaarbedrag.toFixed(2)} (${huidig.spaarpct}% van inkomen)
-Aantal transacties: ${huidig.txCount}
+═══ DATA AFGELOPEN 7 DAGEN (${weekAgo} t/m ${todayStr}) ═══
 
-Top categorieën (uitgaven):
-${catLines}
+Uitgaven (excl. sparen): €${week.totaalUit.toFixed(2)}
+Inkomen ontvangen: €${week.totaalIn.toFixed(2)}
+Gespaard: €${week.spaarbedrag.toFixed(2)}
+Aantal transacties: ${week.txCount}
+
+Top categorieën (deze week):
+${weekCatLines || "  (geen uitgaven)"}
 
 Grootste uitgaven (merchants):
-${merchantLines}
-${vergelijking}
-${recurringList ? `\nVaste lasten: ${recurringList}` : ""}${goalContext}
+${weekMerchantLines || "  (geen)"}
 
-Regels:
+Duurste dagen:
+${weekDagLines || "  (geen data)"}
+${weekVergelijking}
+
+═══ MAANDCONTEXT ═══
+${monthContext}
+${budgetBlock}
+${recurringList ? `\nVaste lasten: ${recurringList}` : ""}
+${goalBlock}
+
+═══ REGELS ═══
+- Dit is een WEKELIJKSE briefing — focus op wat er de afgelopen 7 dagen is gebeurd
+- Gebruik de maandcontext om patronen te benoemen ("je zit halverwege de maand en hebt al X% van je budget gebruikt")
+- Als er geen inkomen deze week is: dat is normaal als salaris op een andere dag valt. Benoem dit NIET als probleem.
+- Als er budget-data is: benoem categorieën die over budget gaan of bijna over budget zijn
+- Als er spaardoelen zijn: benoem kort de voortgang
 - Begin NIET met een # of markdown kopje
-- Geen markdown opmaak, geen bullet points
+- Geen markdown opmaak, geen bullet points, geen **bold**
 - Scheid alinea's met een witregel
-- Schrijf correct Nederlands
+- Schrijf correct Nederlands (bijv. "deze maand" niet "dit maand")
 - Geen kopjes of titels, alleen lopende tekst
-- Begin NIET met "Hallo" of een begroeting — begin direct met een observatie
-- Als er vergelijkingsdata is: benoem de trend (beter/slechter dan vorige maand)
+- Begin NIET met "Hallo" of begroeting — begin direct met een observatie over deze week
+- Noem piekdagen bij naam als ze opvallen (bijv. "vrijdag was je duurste dag")
 - Noem minimaal 1 concreet positief punt
 - Noem minimaal 1 concreet verbeterpunt met een specifieke actie
-- Als er een spaardoel is: benoem de voortgang
 - Eindig met één motiverende zin
 - Maximaal 280 woorden`;
 
-    // ── Claude API call ───────────────────────────────────────
+    // ── Claude API call ───────────────────────────────────
     const message = await client.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 1024,
@@ -303,14 +403,14 @@ Regels:
     const briefing =
       message.content[0].type === "text" ? message.content[0].text : "";
 
-    // ── Opslaan ───────────────────────────────────────────────
+    // ── Opslaan ───────────────────────────────────────────
     await supabase.from("briefings").upsert(
       {
         user_id: user.id,
         content: briefing,
-        totaal_uitgaven: huidig.totaalUit,
-        totaal_inkomen: huidig.totaalIn,
-        gespaard: huidig.spaarbedrag,
+        totaal_uitgaven: week.totaalUit,
+        totaal_inkomen: week.totaalIn,
+        gespaard: week.spaarbedrag,
         created_at: new Date().toISOString(),
       },
       { onConflict: "user_id" }

@@ -621,7 +621,7 @@ export default function BetaPage() {
           marginBottom: 28,
         }}>
           <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#F59E0B' }} />
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#F59E0B' }}>Exclusieve bèta — 100 plekken</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#F59E0B' }}>Exclusieve bèta — 150 plekken</span>
         </div>
 
         <h1 style={{ ...stagger(1), fontSize: 'clamp(34px, 5vw, 56px)', fontWeight: 800, lineHeight: 1.05, letterSpacing: '-2px', marginBottom: 20 }}>
