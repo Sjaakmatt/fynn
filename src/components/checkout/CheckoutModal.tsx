@@ -348,7 +348,6 @@ function PaymentForm({
       <PaymentElement
         options={{
           layout: 'tabs',
-          paymentMethodOrder: ['ideal', 'card'],
         }}
       />
 
