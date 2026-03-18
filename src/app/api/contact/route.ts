@@ -51,13 +51,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const cleanName = (name || "").trim().slice(0, 200);
+    const cleanEmail = email.trim().toLowerCase().slice(0, 320);
+    const cleanSubject = (subject || "Algemeen").trim().slice(0, 200);
+    const cleanMessage = message.trim().slice(0, 5000);
+
     // Store in database
     const { error } = await supabase.from("contact_messages").insert({
       user_id: user?.id ?? null,
-      name: (name || "").trim().slice(0, 200),
-      email: email.trim().toLowerCase().slice(0, 320),
-      subject: (subject || "Algemeen").trim().slice(0, 200),
-      message: message.trim().slice(0, 5000),
+      name: cleanName,
+      email: cleanEmail,
+      subject: cleanSubject,
+      message: cleanMessage,
       status: "new",
       created_at: new Date().toISOString(),
     });
@@ -68,6 +73,66 @@ export async function POST(request: NextRequest) {
         { error: "Er ging iets mis. Probeer het later opnieuw." },
         { status: 500 }
       );
+    }
+
+    // Send email notification via Resend
+    if (process.env.RESEND_API_KEY) {
+      try {
+        await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: "Fynn <noreply@meetfynn.nl>",
+            to: "info@meetfynn.nl",
+            subject: `Nieuw contactbericht: ${cleanSubject}`,
+            html: `
+              <div style="font-family: system-ui, sans-serif; max-width: 560px; margin: 0 auto;">
+                <h2 style="color: #1A3A2A; font-size: 18px; margin-bottom: 24px;">
+                  Nieuw bericht via contactformulier
+                </h2>
+
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+                  <tr>
+                    <td style="padding: 8px 0; color: #6B7280; font-size: 14px; width: 100px;">Naam</td>
+                    <td style="padding: 8px 0; color: #111827; font-size: 14px;">${cleanName || "Niet ingevuld"}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #6B7280; font-size: 14px;">E-mail</td>
+                    <td style="padding: 8px 0; color: #111827; font-size: 14px;">
+                      <a href="mailto:${cleanEmail}" style="color: #1A3A2A;">${cleanEmail}</a>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #6B7280; font-size: 14px;">Onderwerp</td>
+                    <td style="padding: 8px 0; color: #111827; font-size: 14px;">${cleanSubject}</td>
+                  </tr>
+                  ${user ? `
+                  <tr>
+                    <td style="padding: 8px 0; color: #6B7280; font-size: 14px;">User ID</td>
+                    <td style="padding: 8px 0; color: #111827; font-size: 13px; font-family: monospace;">${user.id}</td>
+                  </tr>
+                  ` : ""}
+                </table>
+
+                <div style="background: #F9FAFB; border-radius: 12px; padding: 16px; margin-bottom: 24px;">
+                  <p style="color: #6B7280; font-size: 12px; margin: 0 0 8px 0; text-transform: uppercase; letter-spacing: 0.05em;">Bericht</p>
+                  <p style="color: #111827; font-size: 14px; line-height: 1.6; margin: 0; white-space: pre-wrap;">${cleanMessage}</p>
+                </div>
+
+                <p style="color: #9CA3AF; font-size: 12px; margin: 0;">
+                  Via contactformulier op meetfynn.nl
+                </p>
+              </div>
+            `,
+          }),
+        });
+      } catch (emailError) {
+        // Non-blocking — bericht is al opgeslagen in DB
+        console.error("Resend email error:", emailError);
+      }
     }
 
     return NextResponse.json({ success: true });
