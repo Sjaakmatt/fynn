@@ -32,6 +32,21 @@ Geen CSRF-tokens op POST-endpoints. State-wijzigende acties vertrouwen uitsluite
 ### 1.7 Geen security headers geconfigureerd
 `next.config.ts` is leeg — geen Content-Security-Policy, X-Frame-Options, of Strict-Transport-Security.
 
+### 1.8 IDOR in Enable Banking callback — KRITIEK
+`src/app/api/enablebanking/callback/route.ts:171` — `const userId = state.split("::")[0]` haalt de userId uit de `state` query parameter zonder enige verificatie. Een aanvaller kan de `state` vervalsen om bankrekeningen en transacties aan een willekeurig account te koppelen. Er is ook geen `supabase.auth.getUser()` check in de hele handler.
+
+### 1.9 Cross-user datalek in classify-merchants
+`src/app/api/sync/classify-merchants/route.ts:47` — De query `.in('merchant_key', chunk)` mist `.eq('user_id', user.id)`. Dit leest transactiebedragen van ALLE gebruikers om context te bouwen voor AI-classificatie.
+
+### 1.10 Plaid access tokens onversleuteld opgeslagen
+`src/app/api/plaid/exchange-token/route.ts:29` — Access tokens worden direct in `plaid_items.access_token` opgeslagen zonder encryptie. Dit zijn permanente credentials die toegang geven tot bankgegevens.
+
+### 1.11 Account deletion incompleet (GDPR)
+`src/app/api/account/delete/route.ts:78-95` — Verwijdert data uit applicatietabellen maar roept nooit `supabase.auth.admin.deleteUser()` aan. Het auth-record (inclusief e-mail) blijft bestaan. Mist ook: `budgets`, `contact_messages`, `chat_messages`, `cashflow_events` tabellen.
+
+### 1.12 Service role key zonder authenticatie (beta/count)
+`src/app/api/beta/count/route.ts:4-7` — Gebruikt `SUPABASE_SERVICE_ROLE_KEY` op module-level zonder authenticatie. Elke anonieme gebruiker kan dit endpoint bereiken. De service role client omzeilt Row Level Security.
+
 ---
 
 ## 2. BUGS
@@ -57,6 +72,18 @@ Geen CSRF-tokens op POST-endpoints. State-wijzigende acties vertrouwen uitsluite
 ### 2.7 Inkomen deactivatie query te beperkt
 `src/lib/detect-income.ts:196-203` — `.limit(1)` checkt maar een andere gebruiker. Merchants actief bij andere gebruikers kunnen onterecht gedeactiveerd worden.
 
+### 2.8 Transactions cursor pagination kan records overslaan
+`src/app/api/transactions/route.ts:26` — `query.lt("transaction_date", cursor)` gebruikt `<` op datum, maar meerdere transacties kunnen dezelfde datum delen. Transacties op de cursor-grens gaan verloren tussen pagina's.
+
+### 2.9 Enable Banking `continuation_key` niet URL-encoded
+`src/app/api/enablebanking/callback/route.ts:94` — `continuation_key=${continuationKey}` wordt string-geinterpoleerd zonder `encodeURIComponent()`. Speciale tekens in de key breken de URL.
+
+### 2.10 Budget GET crasht bij eerste gebruik
+`src/app/api/budget/route.ts:319` — `.single()` gooit een Supabase error (PGRST116) als er nog geen budget bestaat. Moet `.maybeSingle()` zijn.
+
+### 2.11 AI response content array kan leeg zijn
+Meerdere AI routes (briefing, chat, uitgave-check, budget, savings-goals tip) benaderen `message.content[0]` zonder te checken of de `content` array niet leeg is.
+
 ---
 
 ## 3. ARCHITECTUURPROBLEMEN
@@ -78,6 +105,23 @@ Het project vertrouwt op meerdere Supabase tabellen (`transactions`, `merchant_m
 
 ### 3.6 Categorie-overlap in rule engine
 `src/lib/categorize-engine.ts` — `'autoverzekering'` staat in zowel `wonen` als `transport`. `'ziggo'` kan matchen in `wonen` en `abonnementen`. First-match-wins gedrag is impliciet en ongedocumenteerd.
+
+### 3.7 Interne HTTP calls i.p.v. directe functie-aanroepen
+`enablebanking/callback/route.ts:48`, `enablebanking/sync/route.ts:521-522`, `plaid/sync/route.ts:358-361` — Meerdere routes doen `fetch()` calls naar andere API routes binnen dezelfde applicatie en forwarden cookies. Dit is fragiel (afhankelijk van `NEXT_PUBLIC_APP_URL`), voegt latency toe, en kan falen in serverless omgevingen.
+
+### 3.8 Gedupliceerde subscription check logica in 7+ bestanden
+`ai/briefing`, `ai/chat`, `ai/uitgave-check`, `budget`, `calendar`, `savings-goals/[id]/tip` — Hetzelfde patroon (fetch profile, check `subscription_status`, vergelijk `trial_ends_at`) is verbatim gekopieerd. Moet een shared utility of middleware worden.
+
+### 3.9 Gedupliceerde `stableId` hash, `analyzeTxs`, `upsertBatch`, `loadMerchantCategories`
+- `stableId` (FNV-1a hash): identiek in `enablebanking/sync` en `plaid/sync`
+- `analyzeTxs`: bijna identiek in `ai/briefing` en `ai/chat`
+- `upsertBatch` en `loadMerchantCategories`: zeer vergelijkbaar in beide sync routes
+
+### 3.10 Upload-transactions route is 590+ regels
+`src/app/api/upload-transactions/route.ts` — Combineert file parsing, encoding detectie, IBAN detectie, account creatie, transactie categorisatie, merchant seeding, recurring detection en AI classification triggering in een enkel bestand.
+
+### 3.11 Sync routes kunnen timeout op serverless
+`enablebanking/sync` en `plaid/sync` kunnen zeer lang draaien (tot 500 pagina's met 300ms delays = 150+ seconden). Dit overschrijdt typische serverless timeouts (10-60s op Vercel).
 
 ---
 
@@ -142,16 +186,25 @@ De dashboard (`page.tsx:92`) checkt alleen `subscription_status === 'trialing'` 
 
 | Prio | Actie | Impact |
 |------|-------|--------|
-| P0 | Verwijder `public/transactions.json` | Datalekrisico |
+| P0 | Fix IDOR in Enable Banking callback (state verificatie) | Aanvaller kan bankdata aan willekeurig account koppelen |
+| P0 | Fix cross-user datalek in classify-merchants | Data lekkage tussen gebruikers |
+| P0 | Verwijder `public/transactions.json` | Gevoelige data publiek |
 | P0 | Fix multi-tenancy bug in `merchant_map` upserts | Data corruptie |
 | P0 | Voeg HTML-escaping toe aan e-mail templates | XSS |
+| P0 | Completeer account deletion (GDPR: auth user + alle tabellen) | Juridisch risico |
 | P1 | Bescherm API routes via middleware of shared guard | Auth bypass |
+| P1 | Versleutel Plaid access tokens | Credential exposure |
+| P1 | Verwijder service role key uit beta/count of voeg auth toe | RLS bypass |
 | P1 | Lazy init voor enablebanking/plaid modules | App crashes |
 | P1 | Fix lege `catch {}` in supabase server client | Stille auth failures |
+| P2 | Fix cursor pagination bug in transactions route | Data verlies bij paginering |
+| P2 | Fix budget GET `.single()` → `.maybeSingle()` | Crash bij eerste gebruik |
 | P2 | Voeg security headers toe in `next.config.ts` | Security hardening |
-| P2 | Extract gedeelde utils (median, clamp01, etc.) | Code kwaliteit |
+| P2 | Extract gedeelde utils en gedupliceerde code | Code kwaliteit |
 | P2 | Verwijder `@supabase/auth-helpers-nextjs` | Dead code |
 | P2 | Fix cancel-provider matching (word boundaries) | Foutieve matches |
+| P2 | Refactor interne HTTP calls naar directe functie-aanroepen | Stabiliteit |
 | P3 | Voeg database migraties toe | Schema management |
-| P3 | Split dashboard page logica | Maintainability |
+| P3 | Split dashboard page en upload-transactions logica | Maintainability |
 | P3 | Voeg CSRF-bescherming toe | Security |
+| P3 | Fix serverless timeout risico in sync routes | Betrouwbaarheid |
