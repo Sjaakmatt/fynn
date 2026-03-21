@@ -47,6 +47,12 @@ Geen CSRF-tokens op POST-endpoints. State-wijzigende acties vertrouwen uitsluite
 ### 1.12 Service role key zonder authenticatie (beta/count)
 `src/app/api/beta/count/route.ts:4-7` — Gebruikt `SUPABASE_SERVICE_ROLE_KEY` op module-level zonder authenticatie. Elke anonieme gebruiker kan dit endpoint bereiken. De service role client omzeilt Row Level Security.
 
+### 1.13 Account deletion zonder re-authenticatie
+`src/components/AccountShell.tsx:86-95` — Account verwijdering vereist alleen een bevestigingsknop. Geen wachtwoord-herbevestiging of MFA-challenge. Een aanvaller met een actieve sessie kan het account permanent verwijderen.
+
+### 1.14 MFA uitschakelen zonder verificatie
+`src/components/mfa/Mfasettings.tsx:40-57` — MFA uitschakelen vereist geen enkele verificatie. Een aanvaller met sessietoegang kan 2FA met een klik uitschakelen.
+
 ---
 
 ## 2. BUGS
@@ -83,6 +89,27 @@ Geen CSRF-tokens op POST-endpoints. State-wijzigende acties vertrouwen uitsluite
 
 ### 2.11 AI response content array kan leeg zijn
 Meerdere AI routes (briefing, chat, uitgave-check, budget, savings-goals tip) benaderen `message.content[0]` zonder te checken of de `content` array niet leeg is.
+
+### 2.12 PlaidLinkButton: State mutatie tijdens render
+`src/components/plaid/PlaidLinkButton.tsx:85-90` — Roept `open()` en `setLoading(false)` aan tijdens de render-fase, wat React-regels schendt en oneindige re-render loops kan veroorzaken. Moet naar een `useEffect`.
+
+### 2.13 UitgaveCheck: Loading state reset ontbreekt bij ongeldige input
+`src/components/UitgaveCheck.tsx:19` — Bij ongeldige invoer (`!Number.isFinite(amount)`) returnt de functie zonder `setLoading(false)`, waardoor de knop permanent disabled blijft.
+
+### 2.14 BudgetPlanner: Division by zero
+`src/components/BudgetPlanner.tsx:254` — `totalUitgegeven / totalBudget` produceert `NaN` als `totalBudget` 0 is, wat `NaN%` rendert in de progress bar.
+
+### 2.15 Layout: `<Analytics/>` buiten `<body>`
+`src/app/layout.tsx:24` — De `<Analytics/>` component staat direct in `<html>` maar voor `<body>`, wat ongeldige HTML is.
+
+### 2.16 Signup: Broken link naar voorwaarden
+`src/app/signup/page.tsx:249` — Link naar `/voorwaarden` maar de pagina staat op `/terms`.
+
+### 2.17 Privacy policy toont altijd de huidige datum
+`src/app/privacy/page.tsx:37` — Gebruikt `new Date().toLocaleDateString(...)` als versiedatum. Een juridisch document moet de werkelijke laatst-gewijzigde datum tonen.
+
+### 2.18 Terms page heeft placeholder KVK-nummer
+`src/app/terms/page.tsx:218` — `KVK: [in te vullen]` — dit is een placeholder die niet in productie mag staan.
 
 ---
 
@@ -155,17 +182,44 @@ Het project vertrouwt op meerdere Supabase tabellen (`transactions`, `merchant_m
 
 ## 5. COMPONENT & UX ISSUES
 
-### 5.1 Geen loading states bij veel componenten
-Meerdere componenten (`BudgetPlanner`, `SubscriptionManager`, `CategoryBreakdown`) tonen geen skeleton/loader tijdens data ophalen.
+### 5.1 Geen loading/error states bij veel componenten
+- `FinancialRadar.tsx:52-60` — Fetch naar `/api/engine` heeft geen `.catch()`. Bij netwerkfout blijft de spinner eeuwig draaien.
+- `HealthScore.tsx:28-35` — Zelfde probleem met `/api/score`.
+- `SubscriptionManager.tsx:51-59` — Geen error handling op fetch. Bij failure crasht `.json()`.
+- `GenerateBriefingButton` — Bij falen wordt error alleen `console.error`'d, geen feedback voor gebruiker.
+- `ChatCoach.tsx:50` — Bij falen van AI chat request verdwijnen loading dots zonder foutmelding.
 
 ### 5.2 Accessibility
-- Knoppen zonder `aria-label` (bijv. de "X" sluitknop in `CoachModal.tsx:110`)
-- Modals zonder `role="dialog"` en `aria-modal="true"`
-- Focus trapping ontbreekt in modals
+- Knoppen zonder `aria-label` in vrijwel alle componenten (close buttons, toggle buttons, navigatie)
+- Modals zonder `role="dialog"`, `aria-modal="true"`, en `aria-labelledby`
+- Focus trapping ontbreekt in alle modals (Tab kan uit de modal ontsnappen)
+- Focus wordt niet hersteld bij sluiten van modals
 - Kleurcontrast niet gewaarborgd bij custom CSS variables
+- Statusindicatoren (progress bars, dots) vertrouwen alleen op kleur — geen alternatief voor kleurenblinden
+- Form inputs missen proper `<label>` associaties (gebruiken placeholder of `<p>` tags)
+- Geen skip-to-content link op enige pagina
+- `<select>` elementen met `appearance: none` maar geen custom dropdown indicator
 
 ### 5.3 Trial check inconsistentie
 De dashboard (`page.tsx:92`) checkt alleen `subscription_status === 'trialing'` zonder trial_ends_at te valideren, maar de AI chat route (`ai/chat/route.ts:108-110`) vergelijkt trial_ends_at met huidige datum. Verlopen trials worden verschillend afgehandeld.
+
+### 5.4 Gedupliceerde modal-implementaties
+Elk modal reimplementeert hetzelfde patroon: portal + backdrop click + escape handler + scroll lock + mount state. Dit gebeurt in `CoachModal`, `BankConnectModal`, `CheckoutModal`, `SubscriptionCancelModal`, `VasteLastenKalender`, en `DashboardShell`. De `Modal` component in `ui/index.tsx` bestaat maar wordt door de meeste componenten niet gebruikt.
+
+### 5.5 ThemeToggle instances kunnen out-of-sync raken
+`DashboardShell` rendert `ThemeToggle` twee keer, en `AccountShell` ook. Elke instance initialiseert eigen `dark` state uit `localStorage`. Als een toggle schakelt, updaten de anderen niet (geen shared context of event listener).
+
+### 5.6 Tab navigatie niet URL-gebaseerd
+`src/components/TabNav.tsx` — Tabs zijn puur client-state. Pagina verversen keert altijd terug naar "overzicht". Deep-linking (bijv. `/dashboard?tab=budget`) wordt niet ondersteund.
+
+### 5.7 Pro-locked tabs geven geen feedback
+Wanneer een gratis gebruiker op een Pro-locked tab klikt, gebeurt er niets. Er zou een tooltip, modal of redirect naar de upgrade flow moeten zijn.
+
+### 5.8 Homepage is volledig client-rendered
+`src/app/page.tsx` is een `'use client'` component. Voor SEO moet de landingspagina een server component zijn.
+
+### 5.9 Contact e-mail inconsistentie
+Terms page gebruikt `info@meetfynn.com`, contact page vermeldt `info@meetfynn.nl`.
 
 ---
 
@@ -197,6 +251,8 @@ De dashboard (`page.tsx:92`) checkt alleen `subscription_status === 'trialing'` 
 | P1 | Verwijder service role key uit beta/count of voeg auth toe | RLS bypass |
 | P1 | Lazy init voor enablebanking/plaid modules | App crashes |
 | P1 | Fix lege `catch {}` in supabase server client | Stille auth failures |
+| P1 | Voeg re-authenticatie toe voor account deletion en MFA disable | Account takeover |
+| P1 | Fix PlaidLinkButton render-phase state mutation | Infinite re-render loop |
 | P2 | Fix cursor pagination bug in transactions route | Data verlies bij paginering |
 | P2 | Fix budget GET `.single()` → `.maybeSingle()` | Crash bij eerste gebruik |
 | P2 | Voeg security headers toe in `next.config.ts` | Security hardening |
@@ -208,3 +264,10 @@ De dashboard (`page.tsx:92`) checkt alleen `subscription_status === 'trialing'` 
 | P3 | Split dashboard page en upload-transactions logica | Maintainability |
 | P3 | Voeg CSRF-bescherming toe | Security |
 | P3 | Fix serverless timeout risico in sync routes | Betrouwbaarheid |
+| P3 | Voeg error boundaries toe aan React app | Crash recovery |
+| P3 | Centraliseer modal component (gebruik `ui/Modal` overal) | Code duplicatie |
+| P3 | Maak homepage server-rendered voor SEO | SEO |
+| P3 | Fix broken link `/voorwaarden` → `/terms` | UX |
+| P3 | Vul KVK-nummer in op terms page | Juridisch |
+| P3 | Fix privacy policy versiedatum (hardcode i.p.v. `new Date()`) | Juridisch |
+| P3 | Voeg accessibility labels en focus management toe aan modals | Toegankelijkheid |
